@@ -20,8 +20,7 @@ jobs:
           auto-update-conda: true
           activate-environment: backend-env
           environment-file: backend/environment.yml
-          conda-activate: true  # THIS ensures the environment is automatically active
-
+          conda-activate: true  
       - name: Run backend tests
         shell: bash -l {0}   # <-- important: ensures conda environment is sourced
         run: |
