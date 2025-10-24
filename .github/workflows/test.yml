@@ -24,6 +24,7 @@ jobs:
 
       - name: Run backend tests
         run: |
+          conda init
           conda activate backend-env
           pytest backend/tests/ --maxfail=1 --disable-warnings -v
 
