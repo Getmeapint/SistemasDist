@@ -1,0 +1,37 @@
+# System files
+.DS_Store
+.Trash
+Thumbs.db
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+
+# Node / frontend dependencies (if any)
+node_modules/
+
+# Logs
+*.log
+*.out
+
+# Docker files and compose (ignore if not needed in image)
+docker-compose.override.yml
+*.swp
+
+# GPX or data files that you don't want in some builds
+*.gpx
+
+# IDE / editor files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Misc
+*.bak
+*.tmp

@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    ports:
+      - "5672:5672" # RabbitMQ server
+      - "15672:15672" # RabbitMQ management UI
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  simulator:
+    build:
+      context: ./simulator
+    depends_on:
+      - backend
+      - rabbitmq
+    networks:
+      - app-network
+    volumes:
+      - ./simulator/trail_route.gpx:/app/trail_route.gpx
+  
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:80"
+    networks:
+      - app-network
+    volumes:
+      - ./simulator/trail_route.gpx:/usr/share/nginx/html/gpx/trail_route.gpx
+
+networks:
+  app-network:
+    driver: bridge
