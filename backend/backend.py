@@ -28,11 +28,19 @@ async def websocket_endpoint(websocket: WebSocket):
     connections.append(websocket)
     try:
         while True:
-            # Keep the connection alive
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
+            try:
+                # Wait for messages from the client
+                data = await websocket.receive_text()
+                # Echo the message back to verify connection
+                await websocket.send_text(f"Echo: {data}")
+            except WebSocketDisconnect:
+                break
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
         # Remove the connection when the client disconnects
-        connections.remove(websocket)
+        if websocket in connections:
+            connections.remove(websocket)
         print("WebSocket client disconnected")
 
 # @app.post("/events")
