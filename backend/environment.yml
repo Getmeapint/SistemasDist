@@ -1,13 +1,15 @@
-name: fastapi-rabbitmq
+name: backend-env
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.11           # or 3.10 if you prefer
   - pip
+  - pytest
+  - aio-pika
+  - gpxpy
+  - requests
   - pip:
       - fastapi==0.111.1
       - uvicorn[standard]==0.27.0
-      - aio-pika==11.2.0
       - pydantic==2.6.0
-      - pytest==8.4.0        # Add pytest for testing
-      - pytest-asyncio==0.22.0  # If you test async functions
+      - pytest-asyncio==0.22.0
