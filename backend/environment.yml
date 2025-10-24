@@ -2,7 +2,7 @@ name: backend-env
 channels:
   - conda-forge
 dependencies:
-  - python=3.11           # or 3.10 if you prefer
+  - python=3.10           # or 3.10 if you prefer
   - pip
   - pytest
   - aio-pika
