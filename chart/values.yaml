@@ -9,5 +9,8 @@ backend:
   image: backend:latest
 frontend:
   image: frontend:latest
-simulator:
-  image: simulator:latest
+
+gpx:
+  pvcName: gpx-pvc
+  mountPath: /usr/share/nginx/html/gpx
+  fileName: trail_route.gpx

@@ -19,9 +19,9 @@ spec:
             - containerPort: 80
           volumeMounts:
             - name: gpx-data
-              mountPath: /usr/share/nginx/html/gpx/trail_route.gpx
-              subPath: trail_route.gpx
+              mountPath: {{ .Values.gpx.mountPath }}/{{ .Values.gpx.fileName }}
+              subPath: {{ .Values.gpx.fileName }}
       volumes:
         - name: gpx-data
-          configMap:
-            name: trail-route-gpx
+          persistentVolumeClaim:
+            claimName: {{ .Values.gpx.pvcName }}
