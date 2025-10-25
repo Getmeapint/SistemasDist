@@ -6,6 +6,7 @@ dependencies:
   - pip
   - pytest
   - aio-pika
+  - aiokafka
   - gpxpy
   - requests
   - pip:

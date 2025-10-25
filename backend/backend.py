@@ -1,16 +1,18 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
-import aio_pika
 import json
+from aiokafka import AIOKafkaConsumer
+import socket
+from contextlib import asynccontextmanager
 
-RABBITMQ_URL = "amqp://guest:guest@rabbitmq/"  # Your RabbitMQ container URL
-QUEUE_NAME = "events"
 
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
+KAFKA_TOPIC = "runner-events"
 
 app = FastAPI()
 
-# Allow CORS for the frontend
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,8 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# List to store active WebSocket connections
-connections = []
+connections = []  # Active WebSocket clients
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -28,63 +29,53 @@ async def websocket_endpoint(websocket: WebSocket):
     connections.append(websocket)
     try:
         while True:
-            try:
-                # Wait for messages from the client
-                data = await websocket.receive_text()
-                # Echo the message back to verify connection
-                await websocket.send_text(f"Echo: {data}")
-            except WebSocketDisconnect:
-                break
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        # Remove the connection when the client disconnects
-        if websocket in connections:
-            connections.remove(websocket)
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        connections.remove(websocket)
         print("WebSocket client disconnected")
 
-# @app.post("/events")
-# async def receive_event(event: dict):
-#     # Send the event to all active WebSocket connections
-#     disconnected_connections = []
-#     print(f"Broadcasting event: {event}")
-#     for connection in connections:
-#         try:
-#             await connection.send_json(event)
-#         except RuntimeError as e:
-#             # Handle cases where the connection is already closed
-#             print(f"Error sending to WebSocket: {e}")
-#             disconnected_connections.append(connection)
-
-#     # Remove disconnected WebSocket connections
-#     for connection in disconnected_connections:
-#         connections.remove(connection)
-
-#     return {"status": "event sent"}
-
-async def consume_rabbitmq():
-    while True:
+# --- Utility to wait for Kafka ---
+async def wait_for_kafka(host="kafka", port=9092, timeout=60):
+    for _ in range(timeout):
         try:
-            connection = await aio_pika.connect_robust(RABBITMQ_URL)
-            channel = await connection.channel()
-            queue = await channel.declare_queue(QUEUE_NAME, durable=True)
-            async with queue.iterator() as queue_iter:
-                async for message in queue_iter:
-                    async with message.process():
-                        event = json.loads(message.body)
-                        disconnected = []
-                        for ws in connections:
-                            try:
-                                await ws.send_json(event)
-                            except:
-                                disconnected.append(ws)
-                        for ws in disconnected:
-                            connections.remove(ws)
-        except Exception as e:
-            print(f"RabbitMQ connection error: {e}, retrying in 5s...")
-            await asyncio.sleep(5)
+            with socket.create_connection((host, port), timeout=1):
+                print("Kafka is ready!")
+                return
+        except OSError:
+            await asyncio.sleep(1)
+    raise TimeoutError("Kafka not ready after 60 seconds")
 
-# Start RabbitMQ consumer on app startup
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(consume_rabbitmq())
+# --- Kafka consumer task ---
+async def consume_kafka():
+    await wait_for_kafka()  # Wait until Kafka is ready
+
+    consumer = AIOKafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id="fastapi-broadcast-group",
+        auto_offset_reset="earliest"
+    )
+    await consumer.start()
+    try:
+        async for msg in consumer:
+            event = json.loads(msg.value.decode("utf-8"))
+            disconnected = []
+            for ws in connections:
+                try:
+                    await ws.send_json(event)
+                except:
+                    disconnected.append(ws)
+            for ws in disconnected:
+                connections.remove(ws)
+    finally:
+        await consumer.stop()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    consumer_task = asyncio.create_task(consume_kafka())
+    yield
+    consumer_task.cancel()
+    try:
+        await consumer_task
+    except asyncio.CancelledError:
+        pass

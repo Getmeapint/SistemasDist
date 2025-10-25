@@ -1,13 +1,30 @@
 version: "3.8"
 
 services:
-  rabbitmq:
-    image: "rabbitmq:3-management"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "5672:5672" # RabbitMQ server
-      - "15672:15672" # RabbitMQ management UI
+      - "2181:2181"
     networks:
       - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.1
+    depends_on:
+      - zookeeper
+    networks:
+      - app-network
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   backend:
     build:
@@ -16,18 +33,18 @@ services:
       - "8000:8000"
     networks:
       - app-network
+    depends_on:
+      - kafka
 
   simulator:
     build:
       context: ./simulator
-    depends_on:
-      - backend
-      - rabbitmq
     networks:
       - app-network
     volumes:
       - ./simulator/trail_route.gpx:/app/trail_route.gpx
-  
+    depends_on:
+      - kafka
 
   frontend:
     build:
@@ -38,6 +55,8 @@ services:
       - app-network
     volumes:
       - ./simulator/trail_route.gpx:/usr/share/nginx/html/gpx/trail_route.gpx
+    depends_on:
+      - kafka
 
 networks:
   app-network:

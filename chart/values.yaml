@@ -1,0 +1,13 @@
+# Default values for chart.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+backend:
+  image: backend:latest
+frontend:
+  image: frontend:latest
+simulator:
+  image: simulator:latest
