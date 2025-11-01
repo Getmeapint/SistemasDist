@@ -25,6 +25,8 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
 
   backend:
     build:
@@ -33,6 +35,8 @@ services:
       - "8000:8000"
     networks:
       - app-network
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
       - kafka
 
@@ -41,22 +45,25 @@ services:
       context: ./simulator
     networks:
       - app-network
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     volumes:
-      - ./simulator/trail_route.gpx:/app/trail_route.gpx
+      - ./simulator/gpx:/app/gpx
     depends_on:
       - kafka
 
   frontend:
-    build:
-      context: ./frontend
+    image: nginx:alpine
     ports:
       - "8080:80"
     networks:
       - app-network
     volumes:
-      - ./simulator/trail_route.gpx:/usr/share/nginx/html/gpx/trail_route.gpx
+      - ./frontend/index.html:/usr/share/nginx/html/index.html
+      - ./simulator/gpx:/usr/share/nginx/html/gpx
+      - ./frontend/assets:/usr/share/nginx/html/
     depends_on:
-      - kafka
+      - backend
 
 networks:
   app-network:
