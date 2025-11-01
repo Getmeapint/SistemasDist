@@ -30,6 +30,14 @@
             padding: 5px;
             border-radius: 5px;
         }
+        #leaderboard {
+            margin-top: 10px;
+            max-height: 300px;
+            overflow: auto;
+            width: 220px;
+        }
+        #leaderboard h4 { margin: 6px 0; }
+        #leaderboardList { padding-left: 18px; margin: 0; }
     </style>
 </head>
 <body>
@@ -37,11 +45,16 @@
         <label for="raceSelect">Select Race:</label>
         <select id="raceSelect">
             <option value="runner-events">Default Race</option>
+            <option value="all">All Races</option>
             <option value="race-trail_route_1">Trail Route 1</option>
             <option value="race-trail_route_2">Trail Route 2</option>
             <option value="race-trail_route_3">Trail Route 3</option>
             <option value="race-trail_route_4">Trail Route 4</option>
         </select>
+        <div id="leaderboard">
+            <h4>Leaderboard</h4>
+            <ol id="leaderboardList"></ol>
+        </div>
     </div>
 
     <div id="map"></div>
@@ -68,48 +81,142 @@
             popupAnchor: [-3, -46]
         });
 
+        // Avoid Leaflet trying to load default shadow images like /pin-shadow.png
+        if (L && L.Icon && L.Icon.Default && L.Icon.Default.mergeOptions) {
+            L.Icon.Default.mergeOptions({ shadowUrl: '' });
+        }
+
         // Athlete state
         const athleteMarkers = {};
         const athleteData = {};  // stores last known position for leaderboard logic
 
+        // Remove all current markers and reset athlete state (used when switching races)
+        function clearMarkers() {
+            Object.keys(athleteMarkers).forEach(name => {
+                try { map.removeLayer(athleteMarkers[name]); } catch (e) {}
+            });
+            // reset
+            for (const k of Object.keys(athleteMarkers)) delete athleteMarkers[k];
+            for (const k of Object.keys(athleteData)) delete athleteData[k];
+            // clear leaderboard
+            const lb = document.getElementById('leaderboardList');
+            if (lb) lb.innerHTML = '';
+        }
+
+    // Route points extracted from the loaded GPX (array of [lat, lng])
+    let routePoints = [];
+
         // GPX layer management
-        let gpxLayer = null;
-        function loadGPX(routeFile) {
-            if (gpxLayer) map.removeLayer(gpxLayer);
-            gpxLayer = new L.GPX(routeFile, {
+        // Support multiple GPX layers (one per race) so 'All Races' can show all tracks
+        const gpxLayers = {}; // map: raceTopic -> L.GPX layer
+
+        // Simple color palette to distinguish races
+        const COLOR_PALETTE = [
+            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+            '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+        ];
+
+        function getColorForRace(raceTopic) {
+            // deterministic index from raceTopic string
+            let h = 0;
+            for (let i = 0; i < raceTopic.length; i++) h = (h * 31 + raceTopic.charCodeAt(i)) >>> 0;
+            return COLOR_PALETTE[h % COLOR_PALETTE.length];
+        }
+
+        function clearGpxLayers() {
+            Object.keys(gpxLayers).forEach(k => {
+                try { map.removeLayer(gpxLayers[k]); } catch (e) {}
+                delete gpxLayers[k];
+            });
+            routePoints = [];
+        }
+
+        // routePoints remains the points for the currently visible single GPX (used by leaderboard)
+        let gpxLastLoadedRace = null;
+
+        function loadGPX(routeFile, raceTopic, color) {
+            // remove existing layer for this race if present
+            if (gpxLayers[raceTopic]) {
+                try { map.removeLayer(gpxLayers[raceTopic]); } catch (e) {}
+                delete gpxLayers[raceTopic];
+            }
+
+            const options = {
                 async: true,
                 marker_options: {
                     startIconUrl: "start.png",
                     endIconUrl: "finish.png",
+                },
+                polyline_options: {
+                    color: color || getColorForRace(raceTopic),
+                    weight: 4,
+                    opacity: 0.8
                 }
-            }).on('loaded', function(e) {
-                map.fitBounds(e.target.getBounds());
+            };
+
+            const layer = new L.GPX(routeFile, options).on('loaded', function(e) {
+                // If this is the last explicitly loaded GPX (single race view), fit bounds and extract routePoints
+                if (!gpxLastLoadedRace || gpxLastLoadedRace === raceTopic) {
+                    try {
+                        map.fitBounds(e.target.getBounds());
+                    } catch (err) {}
+
+                    // Extract polyline points for leaderboard/progress calculation
+                    routePoints = [];
+                    try {
+                        const layers = e.target.getLayers ? e.target.getLayers() : [];
+                        layers.forEach(function(layer) {
+                            if (layer instanceof L.Polyline) {
+                                const latlngs = layer.getLatLngs();
+                                latlngs.forEach(function(item) {
+                                    if (Array.isArray(item)) {
+                                        item.forEach(function(p) { routePoints.push([p.lat, p.lng]); });
+                                    } else {
+                                        routePoints.push([item.lat, item.lng]);
+                                    }
+                                });
+                            }
+                        });
+                    } catch (err) {
+                        console.warn('Could not extract route points for leaderboard:', err);
+                    }
+                }
             }).addTo(map);
+
+            gpxLayers[raceTopic] = layer;
+            gpxLastLoadedRace = raceTopic;
+            return layer;
         }
 
-        // --- WebSocket Handling ---
-        let socket = null;
+        // --- WebSocket Handling (supports multiple sockets for 'All Races') ---
+        const sockets = {}; // map: topic -> WebSocket
+
         function connectWebSocket(raceTopic) {
-            if (socket) socket.close();
+            // avoid duplicate
+            if (sockets[raceTopic]) return;
 
             const wsUrl = `ws://localhost:8000/ws?race=${raceTopic}`;
-            socket = new WebSocket(wsUrl);
+            const ws = new WebSocket(wsUrl);
+            sockets[raceTopic] = ws;
 
-            socket.onopen = () => console.log(`Connected to ${raceTopic}`);
-            socket.onclose = () => console.log(`Disconnected from ${raceTopic}`);
-            socket.onerror = err => console.error("WebSocket error:", err);
+            ws.onopen = () => console.log(`Connected to ${raceTopic}`);
+            ws.onclose = () => {
+                console.log(`Disconnected from ${raceTopic}`);
+                delete sockets[raceTopic];
+            };
+            ws.onerror = err => console.error("WebSocket error:", err);
 
-            socket.onmessage = event => {
+            ws.onmessage = event => {
                 const data = JSON.parse(event.data);
                 const athlete = data.athlete;
                 const gender = data.gender;
                 const lat = data.location.latitude;
                 const lon = data.location.longitude;
-                const race = data.race || "runner-events";
+                const race = data.race || raceTopic;
 
                 const icon = gender === "male" ? maleIcon : femaleIcon;
 
-                athleteData[athlete] = { lat, lon, race };
+                athleteData[athlete] = { lat, lon, race, gender };
 
                 if (athleteMarkers[athlete]) {
                     athleteMarkers[athlete].setLatLng([lat, lon]);
@@ -119,24 +226,133 @@
                         .bindPopup(`<b>${athlete}</b><br>${race}`);
                     athleteMarkers[athlete] = marker;
                 }
+
+                // Update leaderboard immediately when new position arrives
+                updateLeaderboard();
             };
         }
 
+        function closeAllSockets() {
+            Object.keys(sockets).forEach(topic => {
+                try { sockets[topic].close(); } catch (e) {}
+                delete sockets[topic];
+            });
+        }
+
+                // Compute nearest index on the route for a given lat/lon
+                function nearestRouteIndex(lat, lon) {
+                    if (!routePoints || routePoints.length === 0) return -1;
+                    let bestI = -1;
+                    let bestDist = Infinity;
+                    for (let i = 0; i < routePoints.length; i++) {
+                        const p = routePoints[i];
+                        const dx = p[0] - lat;
+                        const dy = p[1] - lon;
+                        const d2 = dx * dx + dy * dy;
+                        if (d2 < bestDist) {
+                            bestDist = d2;
+                            bestI = i;
+                        }
+                    }
+                    return bestI;
+                }
+
+                // Update leaderboard DOM by sorting athletes by progress along route
+                function updateLeaderboard() {
+                    const list = document.getElementById('leaderboardList');
+                    if (!list) return;
+                    // Build array of {name, idx}
+                    const entries = Object.keys(athleteData).map(name => {
+                        const a = athleteData[name];
+                        const idx = nearestRouteIndex(a.lat, a.lon);
+                        return { name, idx, race: a.race };
+                    });
+                    // Sort descending by idx (higher index = further along)
+                    entries.sort((a, b) => b.idx - a.idx);
+                    // Build HTML
+                    list.innerHTML = '';
+                    entries.forEach(e => {
+                        const li = document.createElement('li');
+                        li.textContent = `${e.name} (${e.race || ''})`;
+                        list.appendChild(li);
+                    });
+                }
+
+                // Periodically refresh leaderboard in case of gaps
+                setInterval(updateLeaderboard, 1000);
+
         // --- Race selection ---
         const raceSelect = document.getElementById("raceSelect");
+        function raceToGpxFile(selectedRace) {
+            // Map a topic/race name to an existing GPX file under /gpx
+            // If the selectedRace looks like 'race-<name>' we use that name.
+            if (!selectedRace) return 'gpx/trail_route_1.gpx';
+            if (selectedRace.startsWith('race-')) {
+                return `gpx/${selectedRace.replace('race-', '')}.gpx`;
+            }
+            // Known non-race topics -> map to a default GPX
+            const FALLBACK_MAP = {
+                'runner-events': 'gpx/trail_route_1.gpx'
+            };
+            return FALLBACK_MAP[selectedRace] || 'gpx/trail_route_1.gpx';
+        }
+
         raceSelect.addEventListener("change", (e) => {
             const selectedRace = e.target.value;
             console.log("Switching to race:", selectedRace);
+            // Clear existing markers and leaderboard when switching races
+            clearMarkers();
+
+            // Close any existing sockets first
+            closeAllSockets();
+
+            if (selectedRace === 'all') {
+                // Open sockets for every race option found in the select
+                const raceOptions = [];
+                for (const opt of raceSelect.options) {
+                    const v = opt.value;
+                    if (v && v.startsWith('race-')) {
+                        raceOptions.push(v);
+                    }
+                }
+
+                // open sockets and load GPX for each race with a distinct color
+                clearGpxLayers();
+                for (let i = 0; i < raceOptions.length; i++) {
+                    const v = raceOptions[i];
+                    connectWebSocket(v);
+                    const gpxFile = raceToGpxFile(v);
+                    loadGPX(gpxFile, v, getColorForRace(v));
+                }
+                return;
+            }
+
             connectWebSocket(selectedRace);
 
-            // Attempt to load corresponding GPX
-            const gpxFile = `gpx/${selectedRace.replace("race-", "")}.gpx`;
-            loadGPX(gpxFile);
+            // Load corresponding GPX (map non-race topics to a default GPX)
+            clearGpxLayers();
+            const gpxFile = raceToGpxFile(selectedRace);
+            loadGPX(gpxFile, selectedRace, getColorForRace(selectedRace));
         });
 
-        // Initialize first connection
-        connectWebSocket(raceSelect.value);
-        loadGPX('gpx/trail_route_1.gpx');
+        // Initialize first connection using the current select value
+        const initialRace = raceSelect.value;
+        if (initialRace === 'all') {
+            // connect to all races and load their GPX layers
+            const raceOptions = [];
+            for (const opt of raceSelect.options) {
+                const v = opt.value;
+                if (v && v.startsWith('race-')) raceOptions.push(v);
+            }
+            for (const v of raceOptions) {
+                connectWebSocket(v);
+                const gpxFile = raceToGpxFile(v);
+                loadGPX(gpxFile, v, getColorForRace(v));
+            }
+        } else {
+            connectWebSocket(initialRace);
+            loadGPX(raceToGpxFile(initialRace), initialRace, getColorForRace(initialRace));
+        }
     </script>
 </body>
 </html>

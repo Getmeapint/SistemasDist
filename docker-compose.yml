@@ -47,6 +47,7 @@ services:
       - app-network
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - GPX_FILES_FOLDER=/app/gpx
     volumes:
       - ./simulator/gpx:/app/gpx
     depends_on:
