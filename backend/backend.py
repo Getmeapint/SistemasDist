@@ -1,13 +1,13 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
 from aiokafka import AIOKafkaConsumer
 import socket
-from typing import Optional
+from typing import Optional, List
 
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
-KAFKA_TOPIC = "runner-events"
+DEFAULT_TOPIC = "runner-events"  # fallback if no race is specified
 
 app = FastAPI()
 
@@ -20,10 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-connections = []  # Active WebSocket clients
-consumer_task: Optional[asyncio.Task] = None  # Background Kafka consumer task
-
-# --- Utility to wait for Kafka ---
+# --- Utility to wait for Kafka readiness ---
 async def wait_for_kafka(host="kafka", port=9092, timeout=60):
     for _ in range(timeout):
         try:
@@ -34,67 +31,55 @@ async def wait_for_kafka(host="kafka", port=9092, timeout=60):
             await asyncio.sleep(1)
     raise TimeoutError("Kafka not ready after 60 seconds")
 
-# --- Kafka consumer task ---
-async def consume_kafka():
-    await wait_for_kafka()  # Wait until Kafka is ready
-
+# --- Create a consumer for given topics ---
+async def consume_topics(topics: List[str], websocket: WebSocket):
+    await wait_for_kafka()
     consumer = AIOKafkaConsumer(
-        KAFKA_TOPIC,
+        *topics,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id="fastapi-broadcast-group",
-        auto_offset_reset="earliest"
+        group_id=None,  # None → no persistent group, each client gets its own stream
+        auto_offset_reset="latest"  # Only new events, real-time style
     )
     await consumer.start()
-    print("Kafka consumer started.")
+    print(f"Started consumer for {topics}")
+
     try:
         async for msg in consumer:
             try:
                 event = json.loads(msg.value.decode("utf-8"))
-                print("Received event:", event)
             except Exception as e:
                 print("Failed to decode Kafka message:", e)
                 continue
 
-            disconnected = []
-            for ws in connections:
-                try:
-                    await ws.send_json(event)
-                except Exception as e:
-                    print("WebSocket send error:", e)
-                    disconnected.append(ws)
-
-            for ws in disconnected:
-                connections.remove(ws)
-                print("Removed disconnected client")
+            # Forward to WebSocket
+            try:
+                await websocket.send_json(event)
+            except Exception as e:
+                print(f"WebSocket send error: {e}")
+                break
     finally:
         await consumer.stop()
-        print("Kafka consumer stopped")
-
-# --- FastAPI startup/shutdown events ---
-@app.on_event("startup")
-async def startup_event():
-    global consumer_task
-    consumer_task = asyncio.create_task(consume_kafka())
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global consumer_task
-    if consumer_task:
-        consumer_task.cancel()
-        try:
-            await consumer_task
-        except asyncio.CancelledError:
-            print("Kafka consumer task cancelled")
+        print(f"Stopped consumer for {topics}")
 
 # --- WebSocket endpoint ---
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, race: Optional[str] = Query(None)):
     await websocket.accept()
-    connections.append(websocket)
-    print(f"WebSocket client connected, total: {len(connections)}")
+    race_topic = race or DEFAULT_TOPIC
+    topics = [race_topic]
+    print(f"WebSocket connected. Subscribing to: {topics}")
+
+    # Launch dedicated consumer task for this socket
+    consumer_task = asyncio.create_task(consume_topics(topics, websocket))
+
     try:
         while True:
             await asyncio.sleep(1)
     except WebSocketDisconnect:
-        connections.remove(websocket)
-        print("WebSocket client disconnected")
+        print(f"Client disconnected from {race_topic}")
+    finally:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
