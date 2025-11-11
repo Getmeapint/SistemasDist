@@ -1,48 +1,45 @@
 version: "3.8"
 
 services:
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.1
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    networks:
-      - app-network
-
   kafka:
     image: confluentinc/cp-kafka:7.5.1
-    depends_on:
-      - zookeeper
-    networks:
-      - app-network
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    container_name: kafka
     ports:
       - "9092:9092"
-
+    environment:
+      # === KRaft Mode (no ZooKeeper) ===
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"  # random 22-character base64 string, can be static
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - app-network
+ 
   backend:
-    build:
-      context: ./backend
+ 
+    image: manufreit/sd-backend:latest
     ports:
       - "8000:8000"
     networks:
       - app-network
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    depends_on:
-      - kafka
 
   simulator:
-    build:
-      context: ./simulator
+
+    image: manufreit/sd-simulator:latest
     networks:
       - app-network
     environment:
@@ -50,22 +47,22 @@ services:
       - GPX_FILES_FOLDER=/app/gpx
     volumes:
       - ./simulator/gpx:/app/gpx
-    depends_on:
-      - kafka
+
 
   frontend:
-    image: nginx:alpine
+    image: manufreit/sd-frontend:latest
     ports:
       - "8080:80"
     networks:
       - app-network
     volumes:
-      - ./frontend/index.html:/usr/share/nginx/html/index.html
+      - ./frontend/index.html:/usr/share/nginx/html
       - ./simulator/gpx:/usr/share/nginx/html/gpx
       - ./frontend/assets:/usr/share/nginx/html/
-    depends_on:
-      - backend
 
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  kafka_data:

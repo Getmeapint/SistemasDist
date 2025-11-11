@@ -9,9 +9,23 @@ import json
 from threading import Thread
 
 # Kafka configuration
-KAFKA_BOOTSTRAP_SERVERS = "kafka-service:9092"  # or your Kafka broker address
+# KAFKA_BOOTSTRAP_SERVERS = "kafka-service:9092"  # or your Kafka broker address
+KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:9094"
+
 
 BASE_TOPIC_PREFIX = "race-"   # Each race will have its own topic
+
+
+
+from kafka.admin import KafkaAdminClient
+
+try:
+    admin = KafkaAdminClient(bootstrap_servers='127.0.0.1:9094')
+    print("Kafka Admin connected!")
+    topics = admin.list_topics()
+    print("Existing topics:", topics)
+except Exception as e:
+    print("Kafka Admin error:", e)
 
 # GPX files folder — can be overridden in the environment (use absolute path in containers)
 GPX_FILES_FOLDER = os.environ.get("GPX_FILES_FOLDER", "./gpx/")
@@ -78,6 +92,7 @@ def load_trails(folder=GPX_FILES_FOLDER):
     return races
 
 # --- Athlete simulation ---
+# --- Athlete simulation with proper debug ---
 def simulate_athlete(athlete, race_topic, points, speed_kmh):
     athlete_name = athlete["name"]
     athlete_gender = athlete["gender"]
@@ -91,12 +106,9 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
         distance = start.distance_3d(end)
         duration = distance / speed_mps
 
-        # Ensure at least one step per segment (avoid skipping very short segments)
         steps = max(1, int(duration))
 
         for t in range(steps):
-            # fraction  in [0, 1). We use t/steps so last fraction is <1 and
-            # the next segment's first point will naturally continue the path.
             fraction = t / steps
             lat = start.latitude + fraction * (end.latitude - start.latitude)
             lon = start.longitude + fraction * (end.longitude - start.longitude)
@@ -113,13 +125,18 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
             }
 
             try:
-                producer.send(race_topic, event)
-                # don't flush per message — let the producer batch for throughput
-                print(f"[{race_topic}] Sent {athlete_name} @ ({lat:.5f}, {lon:.5f})")
+                print(f"[DEBUG] Sending event for {athlete_name} to topic {race_topic}...")
+                future = producer.send(race_topic, event)
+
+                # Wait for Kafka ack and catch errors
+                record_metadata = future.get(timeout=10)
+                print(f"[SUCCESS] Event sent to {record_metadata.topic} partition {record_metadata.partition} "
+                      f"offset {record_metadata.offset} for {athlete_name} @ ({lat:.5f}, {lon:.5f})")
             except Exception as e:
-                print(f"Error sending event to Kafka: {e}")
+                print(f"[ERROR] Failed to send event for {athlete_name} to topic {race_topic}: {e}")
 
             time.sleep(1)
+
 
 # --- Multiple athletes simulation ---
 def simulate_multiple_athletes():

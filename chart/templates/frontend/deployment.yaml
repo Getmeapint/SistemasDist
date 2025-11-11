@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
+  labels:
+    app: frontend
 spec:
   replicas: 1
   selector:
@@ -17,11 +19,27 @@ spec:
           image: manufreit/sd-frontend:latest
           ports:
             - containerPort: 80
-          volumeMounts:
-            - name: gpx-data
-              mountPath: {{ .Values.gpx.mountPath }}/{{ .Values.gpx.fileName }}
-              subPath: {{ .Values.gpx.fileName }}
-      volumes:
-        - name: gpx-data
-          persistentVolumeClaim:
-            claimName: {{ .Values.gpx.pvcName }}
+          # Optional: mount GPX or static assets if needed
+          # volumeMounts:
+          #   - name: gpx-files
+          #     mountPath: /app/gpx
+      # volumes:
+      #   - name: gpx-files
+      #     hostPath:
+      #       path: /path/on/node/simulator/gpx
+      #       type: Directory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
+  type: LoadBalancer  # or LoadBalancer if on cloud
+  ports:
+    - protocol: TCP
+      port: 80       # service port
+      targetPort: 80 # container port
+      nodePort: 30081 # optional, only with NodePort

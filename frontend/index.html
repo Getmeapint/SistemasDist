@@ -195,7 +195,8 @@
             // avoid duplicate
             if (sockets[raceTopic]) return;
 
-            const wsUrl = `ws://localhost:8000/ws?race=${raceTopic}`;
+            // const wsUrl = `ws://backend-service:8000/ws?race=${raceTopic}`;
+            const wsUrl = `ws://127.0.0.1:8000/ws?race=${raceTopic}`;
             const ws = new WebSocket(wsUrl);
             sockets[raceTopic] = ws;
 

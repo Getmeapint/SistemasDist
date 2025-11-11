@@ -1,16 +1,16 @@
-# Default values for chart.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
-# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
-replicaCount: 1
-
+kafka:
+  nodeId: 1
+  port: 9092
+  clusterId: "MkU3OEVBNTcwNTJENDM2Qk"  # generate once
+  storage:
+    type: emptyDir
 backend:
-  image: backend:latest
+  image: manufreit/sd-backend:latest
+  port: 8000
+simulator:
+  image: manufreit/sd-simulator:latest
+  gpxFolder: /app/gpx
 frontend:
-  image: frontend:latest
-
-gpx:
-  pvcName: gpx-pvc
-  mountPath: /usr/share/nginx/html/gpx
-  fileName: trail_route.gpx
+  image: manufreit/sd-frontend:latest
+  assetsPath: /usr/share/nginx/html/assets
+  gpxPath: /usr/share/nginx/html/gpx

@@ -7,6 +7,7 @@ RUN pip install requests gpxpy pika kafka-python
 # Copiar o código do simulador
 WORKDIR /app
 COPY simulator.py /app/simulator.py
+COPY gpx /app/gpx
 
 # Comando para iniciar o simulador
-CMD ["python", "simulator.py"]
+CMD ["python", "-u","simulator.py"]
