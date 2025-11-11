@@ -1,7 +1,7 @@
 kafka:
   nodeId: 1
   port: 9092
-  clusterId: "MkU3OEVBNTcwNTJENDM2Qk"  # generate once
+  clusterId: "MkU3OEVBNTcwNTJENDM2Qk" 
   storage:
     type: emptyDir
 backend:

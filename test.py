@@ -8,12 +8,11 @@ from kafka.errors import NoBrokersAvailable
 import json
 from threading import Thread
 
-# Kafka configuration
-# KAFKA_BOOTSTRAP_SERVERS = "kafka-service:9092"  # or your Kafka broker address
+
 KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:9094"
 
 
-BASE_TOPIC_PREFIX = "race-"   # Each race will have its own topic
+BASE_TOPIC_PREFIX = "race-"   
 
 
 
@@ -27,7 +26,6 @@ try:
 except Exception as e:
     print("Kafka Admin error:", e)
 
-# GPX files folder — can be overridden in the environment (use absolute path in containers)
 GPX_FILES_FOLDER = os.environ.get("GPX_FILES_FOLDER", "./gpx/")
 print(f"Using GPX files folder: {GPX_FILES_FOLDER}")
 
@@ -39,9 +37,8 @@ ATHLETES = [
     {"name": "Charlie Davis", "gender": "male"},
     {"name": "David Evans", "gender": "male"}
 ]
-SPEED_VARIATION = (6, 12)  # km/h
+SPEED_VARIATION = (6, 12)  
 
-# --- Kafka connection with retries ---
 def wait_for_kafka(bootstrap_servers, retries=10, delay=2):
     for i in range(retries):
         try:
@@ -56,7 +53,6 @@ def wait_for_kafka(bootstrap_servers, retries=10, delay=2):
             time.sleep(delay)
     raise Exception("Unable to connect to Kafka after retries")
 
-# Lazy producer: don't connect at import time (prevents container start hangs)
 _producer = None
 def get_producer(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS):
     """Return a singleton KafkaProducer, creating it on first use."""
@@ -74,9 +70,8 @@ def flush_producer():
         except Exception as e:
             print("Error flushing producer:", e)
 
-# --- Trails loading with GPX parsing ---
 def load_trails(folder=GPX_FILES_FOLDER):
-    races = {}  # map: topic_name → list of GPX points
+    races = {} 
     for file in glob.glob(f"{folder}/*.gpx"):
         with open(file, 'r') as f:
             gpx = gpxpy.parse(f)
@@ -84,15 +79,13 @@ def load_trails(folder=GPX_FILES_FOLDER):
             for track in gpx.tracks:
                 for segment in track.segments:
                     points.extend(segment.points)
-            # Generate topic name from file name
             race_name = os.path.splitext(os.path.basename(file))[0]
             topic_name = BASE_TOPIC_PREFIX + race_name
             races[topic_name] = points
     print(f"Loaded {len(races)} races: {list(races.keys())}")
     return races
 
-# --- Athlete simulation ---
-# --- Athlete simulation with proper debug ---
+
 def simulate_athlete(athlete, race_topic, points, speed_kmh):
     athlete_name = athlete["name"]
     athlete_gender = athlete["gender"]
@@ -128,7 +121,6 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
                 print(f"[DEBUG] Sending event for {athlete_name} to topic {race_topic}...")
                 future = producer.send(race_topic, event)
 
-                # Wait for Kafka ack and catch errors
                 record_metadata = future.get(timeout=10)
                 print(f"[SUCCESS] Event sent to {record_metadata.topic} partition {record_metadata.partition} "
                       f"offset {record_metadata.offset} for {athlete_name} @ ({lat:.5f}, {lon:.5f})")
@@ -138,21 +130,18 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
             time.sleep(1)
 
 
-# --- Multiple athletes simulation ---
 def simulate_multiple_athletes():
     races = load_trails(GPX_FILES_FOLDER)
     if not races:
         print("No GPX races found!")
         return
 
-    # Fixed-assignment mode: allow forcing a specific race and number of participants
     fixed_race_env = os.environ.get("FIXED_RACE")
     fixed_participants_env = os.environ.get("FIXED_PARTICIPANTS")
 
     threads = []
 
     if fixed_race_env:
-        # Accept either topic name (race-*) or bare gpx filename
         if fixed_race_env.startswith(BASE_TOPIC_PREFIX):
             race_topic = fixed_race_env
         else:
@@ -162,7 +151,6 @@ def simulate_multiple_athletes():
             print(f"Fixed race '{race_topic}' not found among loaded races: {list(races.keys())}")
             return
 
-        # Determine number of participants
         if fixed_participants_env:
             try:
                 num = int(fixed_participants_env)
@@ -173,16 +161,13 @@ def simulate_multiple_athletes():
                 print("FIXED_PARTICIPANTS must be > 0")
                 return
         else:
-            # default to 3 participants if not specified
             num = 3
 
         print(f"Starting fixed-assignment: race={race_topic}, participants={num}")
 
-        # Build participant list by cycling through ATHLETES if needed
         participants = []
         for i in range(num):
             base = ATHLETES[i % len(ATHLETES)].copy()
-            # If we need more participants than unique names, add an index suffix
             if i >= len(ATHLETES):
                 base["name"] = f"{base['name']} #{i//len(ATHLETES)+1}"
             participants.append(base)
@@ -196,9 +181,7 @@ def simulate_multiple_athletes():
             time.sleep(0.5)
 
     else:
-        # Default behavior: random assignment of each defined athlete to races
         for athlete in ATHLETES:
-            # Randomly assign athlete to a race
             race_topic = random.choice(list(races.keys()))
             points = races[race_topic]
             speed_kmh = random.uniform(*SPEED_VARIATION)
@@ -211,7 +194,6 @@ def simulate_multiple_athletes():
     for thread in threads:
         thread.join()
 
-    # Flush any buffered messages once simulation completes
     try:
         flush_producer()
     except Exception:

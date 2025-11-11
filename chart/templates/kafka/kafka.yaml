@@ -45,7 +45,7 @@ kind: Service
 metadata:
   name: kafka-service
 spec:
-  type: ClusterIP   # Exposes service outside the cluster
+  type: ClusterIP  
   selector:
     app: kafka
   ports:

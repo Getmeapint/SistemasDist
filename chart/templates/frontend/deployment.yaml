@@ -24,7 +24,7 @@ spec:
           image: manufreit/sd-frontend:latest
           ports:
             - containerPort: 80
-          # Optional: mount GPX or static assets if needed
+          #
           # volumeMounts:
           #   - name: gpx-files
           #     mountPath: /app/gpx
@@ -42,9 +42,9 @@ metadata:
 spec:
   selector:
     app: frontend
-  type: LoadBalancer  # or LoadBalancer if on cloud
+  type: LoadBalancer 
   ports:
     - protocol: TCP
-      port: 80       # service port
-      targetPort: 80 # container port
-      nodePort: 30081 # optional, only with NodePort
+      port: 80      
+      targetPort: 80 
+      nodePort: 30081 
