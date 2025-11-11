@@ -14,3 +14,4 @@ frontend:
   image: manufreit/sd-frontend:latest
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
+
