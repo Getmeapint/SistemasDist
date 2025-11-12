@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300" viewBox="0 0 1000 300">
+  <style>
+    .box { fill: #ffffff; stroke: #2b6cb0; stroke-width: 2; rx: 8; }
+    .title { font: 600 14px 'Segoe UI', sans-serif; fill: #2b6cb0; }
+    .label { font: 400 13px 'Segoe UI', sans-serif; fill: #1a202c; }
+    .small { font: 400 11px 'Segoe UI', sans-serif; fill: #4a5568; }
+    .arrow { stroke: #4a5568; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4a5568" />
+    </marker>
+  </defs>
+
+  <!-- Boxes -->
+  <g transform="translate(30,30)">
+    <rect class="box" x="0" y="0" width="160" height="70"/>
+    <text class="title" x="12" y="22">Simulator (Producer)</text>
+    <text class="small" x="12" y="42">sends JSON events to Kafka</text>
+    <text class="small" x="12" y="58">topic: trail_*</text>
+  </g>
+
+  <g transform="translate(250,30)">
+    <rect class="box" x="0" y="0" width="160" height="70"/>
+    <text class="title" x="12" y="22">Kafka (Broker)</text>
+    <text class="small" x="12" y="42">appends messages per topic</text>
+    <text class="small" x="12" y="58">durable, decoupled buffer</text>
+  </g>
+
+  <g transform="translate(460,30)">
+    <rect class="box" x="0" y="0" width="240" height="70"/>
+    <text class="title" x="12" y="22">Backend (Consumer &amp; WebSocket)</text>
+    <text class="small" x="12" y="42">aiokafka consumer → websocket.send_json()</text>
+    <text class="small" x="12" y="58">endpoint: /ws?topic=trail_*</text>
+  </g>
+
+  <g transform="translate(750,30)">
+    <rect class="box" x="0" y="0" width="200" height="70"/>
+    <text class="title" x="12" y="22">Frontend (Browser)</text>
+    <text class="small" x="12" y="42">ws://.../ws?topic=... → onmessage</text>
+    <text class="small" x="12" y="58">update Leaflet markers &amp; leaderboard</text>
+  </g>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M190 65 L250 65" />
+  <path class="arrow" d="M410 65 L460 65" />
+  <path class="arrow" d="M700 65 L750 65" />
+
+  <!-- Bottom: message example -->
+  <g transform="translate(30,150)">
+    <rect x="0" y="0" width="920" height="110" rx="8" fill="#f7fafc" stroke="#e2e8f0"/>
+    <text class="label" x="12" y="20">Message example (JSON):</text>
+    <text class="small" x="12" y="40">{ "athlete": "John Doe", "gender": "male", "topic": "trail_route_1",</text>
+    <text class="small" x="12" y="58">  "location": { "latitude": 12.3456, "longitude": -45.6789 }, "elevation": 123.4, "time": "..." }</text>
+    <text class="small" x="12" y="80">Flow: Simulator → Kafka topic (trail_*) → Backend consumer → WebSocket → Frontend UI</text>
+  </g>
+
+</svg>

@@ -12,7 +12,7 @@ from threading import Thread
 KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:9094"
 
 
-BASE_TOPIC_PREFIX = "race-"   
+BASE_TOPIC_PREFIX = "trail_"   
 
 
 
@@ -71,7 +71,8 @@ def flush_producer():
             print("Error flushing producer:", e)
 
 def load_trails(folder=GPX_FILES_FOLDER):
-    races = {} 
+    """Load GPX trails and return a dict mapping Kafka topic -> list[GPXPoints]."""
+    trail_points_by_topic = {}
     for file in glob.glob(f"{folder}/*.gpx"):
         with open(file, 'r') as f:
             gpx = gpxpy.parse(f)
@@ -79,14 +80,14 @@ def load_trails(folder=GPX_FILES_FOLDER):
             for track in gpx.tracks:
                 for segment in track.segments:
                     points.extend(segment.points)
-            race_name = os.path.splitext(os.path.basename(file))[0]
-            topic_name = BASE_TOPIC_PREFIX + race_name
-            races[topic_name] = points
-    print(f"Loaded {len(races)} races: {list(races.keys())}")
-    return races
+            trail_name = os.path.splitext(os.path.basename(file))[0]
+            topic_name = BASE_TOPIC_PREFIX + trail_name
+            trail_points_by_topic[topic_name] = points
+    print(f"Loaded {len(trail_points_by_topic)} topics: {list(trail_points_by_topic.keys())}")
+    return trail_points_by_topic
 
 
-def simulate_athlete(athlete, race_topic, points, speed_kmh):
+def simulate_athlete(athlete, topic, points, speed_kmh):
     athlete_name = athlete["name"]
     athlete_gender = athlete["gender"]
     speed_mps = speed_kmh / 3.6
@@ -110,7 +111,7 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
             event = {
                 "athlete": athlete_name,
                 "gender": athlete_gender,
-                "race": race_topic,
+                "topic": topic,
                 "location": {"latitude": lat, "longitude": lon},
                 "elevation": ele,
                 "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -118,37 +119,37 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
             }
 
             try:
-                print(f"[DEBUG] Sending event for {athlete_name} to topic {race_topic}...")
-                future = producer.send(race_topic, event)
+                print(f"[DEBUG] Sending event for {athlete_name} to topic {topic}...")
+                future = producer.send(topic, event)
 
                 record_metadata = future.get(timeout=10)
                 print(f"[SUCCESS] Event sent to {record_metadata.topic} partition {record_metadata.partition} "
                       f"offset {record_metadata.offset} for {athlete_name} @ ({lat:.5f}, {lon:.5f})")
             except Exception as e:
-                print(f"[ERROR] Failed to send event for {athlete_name} to topic {race_topic}: {e}")
+                print(f"[ERROR] Failed to send event for {athlete_name} to topic {topic}: {e}")
 
             time.sleep(1)
 
 
 def simulate_multiple_athletes():
-    races = load_trails(GPX_FILES_FOLDER)
-    if not races:
-        print("No GPX races found!")
+    trail_points_by_topic = load_trails(GPX_FILES_FOLDER)
+    if not trail_points_by_topic:
+        print("No GPX trails found!")
         return
 
-    fixed_race_env = os.environ.get("FIXED_RACE")
+    fixed_topic_env = os.environ.get("FIXED_TOPIC") or os.environ.get("FIXED_RACE")  # FIXED_RACE deprecated
     fixed_participants_env = os.environ.get("FIXED_PARTICIPANTS")
 
     threads = []
 
-    if fixed_race_env:
-        if fixed_race_env.startswith(BASE_TOPIC_PREFIX):
-            race_topic = fixed_race_env
+    if fixed_topic_env:
+        if fixed_topic_env.startswith(BASE_TOPIC_PREFIX):
+            topic = fixed_topic_env
         else:
-            race_topic = BASE_TOPIC_PREFIX + fixed_race_env
+            topic = BASE_TOPIC_PREFIX + fixed_topic_env
 
-        if race_topic not in races:
-            print(f"Fixed race '{race_topic}' not found among loaded races: {list(races.keys())}")
+        if topic not in trail_points_by_topic:
+            print(f"Fixed topic '{topic}' not found among loaded topics: {list(trail_points_by_topic.keys())}")
             return
 
         if fixed_participants_env:
@@ -163,7 +164,7 @@ def simulate_multiple_athletes():
         else:
             num = 3
 
-        print(f"Starting fixed-assignment: race={race_topic}, participants={num}")
+        print(f"Starting fixed-assignment: topic={topic}, participants={num}")
 
         participants = []
         for i in range(num):
@@ -172,21 +173,21 @@ def simulate_multiple_athletes():
                 base["name"] = f"{base['name']} #{i//len(ATHLETES)+1}"
             participants.append(base)
 
-        points = races[race_topic]
+        points = trail_points_by_topic[topic]
         for athlete in participants:
             speed_kmh = random.uniform(*SPEED_VARIATION)
-            thread = Thread(target=simulate_athlete, args=(athlete, race_topic, points, speed_kmh))
+            thread = Thread(target=simulate_athlete, args=(athlete, topic, points, speed_kmh))
             threads.append(thread)
             thread.start()
             time.sleep(0.5)
 
     else:
         for athlete in ATHLETES:
-            race_topic = random.choice(list(races.keys()))
-            points = races[race_topic]
+            topic = random.choice(list(trail_points_by_topic.keys()))
+            points = trail_points_by_topic[topic]
             speed_kmh = random.uniform(*SPEED_VARIATION)
 
-            thread = Thread(target=simulate_athlete, args=(athlete, race_topic, points, speed_kmh))
+            thread = Thread(target=simulate_athlete, args=(athlete, topic, points, speed_kmh))
             threads.append(thread)
             thread.start()
             time.sleep(0.5)

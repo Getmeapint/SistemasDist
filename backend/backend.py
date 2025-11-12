@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
+import uuid
 from aiokafka import AIOKafkaConsumer
 import socket
 from typing import Optional, List
@@ -29,7 +30,7 @@ async def wait_for_kafka(host="kafka-service", port=9092, timeout=60):
             await asyncio.sleep(1)
     raise TimeoutError("Kafka not ready after 60 seconds")
 
-async def consume_topics(topics: List[str], websocket: WebSocket):
+async def consume_topics(topics: List[str], websocket: WebSocket, conn_id: str):
     await wait_for_kafka()
     consumer = AIOKafkaConsumer(
         *topics,
@@ -49,8 +50,14 @@ async def consume_topics(topics: List[str], websocket: WebSocket):
                 print("Failed to decode Kafka message:", e)
                 continue
 
+            # attach connection id so clients can detect stale/other-connection messages
             try:
-                await websocket.send_json(event)
+                to_send = dict(event)
+                # Ensure "topic" field is present and consistent for downstream clients.
+                effective_topic = to_send.get("topic") or msg.topic
+                to_send.setdefault("topic", effective_topic)
+                to_send["conn_id"] = conn_id
+                await websocket.send_json(to_send)
             except Exception as e:
                 print(f"WebSocket send error: {e}")
                 break
@@ -59,19 +66,25 @@ async def consume_topics(topics: List[str], websocket: WebSocket):
         print(f"Stopped consumer for {topics}")
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, race: Optional[str] = Query(None)):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    topic: Optional[str] = Query(None),
+):
     await websocket.accept()
-    race_topic = race or DEFAULT_TOPIC
-    topics = [race_topic]
-    print(f"WebSocket connected. Subscribing to: {topics}")
+    # assign a unique connection id for this websocket client
+    connection_id = str(uuid.uuid4())
+    # Accept 'topic' as the primary alias, falling back to default.
+    selected_topic = topic or DEFAULT_TOPIC
+    topics = [selected_topic]
+    print(f"WebSocket connected (conn_id={connection_id}). Subscribing to: {topics}")
 
-    consumer_task = asyncio.create_task(consume_topics(topics, websocket))
+    consumer_task = asyncio.create_task(consume_topics(topics, websocket, connection_id))
 
     try:
         while True:
             await asyncio.sleep(1)
     except WebSocketDisconnect:
-        print(f"Client disconnected from {race_topic}")
+        print(f"Client disconnected from {selected_topic}")
     finally:
         consumer_task.cancel()
         try:

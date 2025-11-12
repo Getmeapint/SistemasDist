@@ -42,14 +42,14 @@
 </head>
 <body>
     <div id="controls">
-        <label for="raceSelect">Select Race:</label>
-        <select id="raceSelect">
-            <option value="runner-events">Default Race</option>
-            <option value="all">All Races</option>
-            <option value="race-trail_route_1">Trail Route 1</option>
-            <option value="race-trail_route_2">Trail Route 2</option>
-            <option value="race-trail_route_3">Trail Route 3</option>
-            <option value="race-trail_route_4">Trail Route 4</option>
+        <label for="topicSelect">Select Trail:</label>
+        <select id="topicSelect">
+            <option value="runner-events">Default Trail</option>
+            <option value="all">All Trails</option>
+            <option value="trail_route_1">Trail Route 1</option>
+            <option value="trail_route_2">Trail Route 2</option>
+            <option value="trail_route_3">Trail Route 3</option>
+            <option value="trail_route_4">Trail Route 4</option>
         </select>
         <div id="leaderboard">
             <h4>Leaderboard</h4>
@@ -69,13 +69,13 @@
 
         // Icons
         const maleIcon = L.icon({
-            iconUrl: "male.png",
+            iconUrl: "assets/images/male.png",
             iconSize: [28, 65],
             iconAnchor: [12, 64],
             popupAnchor: [-3, -46]
         });
         const femaleIcon = L.icon({
-            iconUrl: "female.png",
+            iconUrl: "assets/images/female.png",
             iconSize: [28, 65],
             iconAnchor: [12, 64],
             popupAnchor: [-3, -46]
@@ -90,7 +90,7 @@
         const athleteMarkers = {};
         const athleteData = {};  // stores last known position for leaderboard logic
 
-        // Remove all current markers and reset athlete state (used when switching races)
+        // Remove all current markers and reset athlete state (used when switching topics)
         function clearMarkers() {
             Object.keys(athleteMarkers).forEach(name => {
                 try { map.removeLayer(athleteMarkers[name]); } catch (e) {}
@@ -107,23 +107,19 @@
     let routePoints = [];
 
         // GPX layer management
-        // Support multiple GPX layers (one per race) so 'All Races' can show all tracks
-        const gpxLayers = {}; // map: raceTopic -> L.GPX layer
+        // Support multiple GPX layers (one per topic) so 'All Trails' can show all tracks
+        const gpxLayers = {}; // map: topic -> L.GPX layer    // Simple color palette to distinguish topics
+    const COLOR_PALETTE = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+        '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ];
 
-        // Simple color palette to distinguish races
-        const COLOR_PALETTE = [
-            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
-            '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
-        ];
-
-        function getColorForRace(raceTopic) {
-            // deterministic index from raceTopic string
-            let h = 0;
-            for (let i = 0; i < raceTopic.length; i++) h = (h * 31 + raceTopic.charCodeAt(i)) >>> 0;
-            return COLOR_PALETTE[h % COLOR_PALETTE.length];
-        }
-
-        function clearGpxLayers() {
+    function getColorForTopic(topic) {
+        // deterministic index from topic string
+        let h = 0;
+        for (let i = 0; i < topic.length; i++) h = (h * 31 + topic.charCodeAt(i)) >>> 0;
+        return COLOR_PALETTE[h % COLOR_PALETTE.length];
+    }        function clearGpxLayers() {
             Object.keys(gpxLayers).forEach(k => {
                 try { map.removeLayer(gpxLayers[k]); } catch (e) {}
                 delete gpxLayers[k];
@@ -131,32 +127,30 @@
             routePoints = [];
         }
 
-        // routePoints remains the points for the currently visible single GPX (used by leaderboard)
-        let gpxLastLoadedRace = null;
+    // routePoints remains the points for the currently visible single GPX (used by leaderboard)
+    let gpxLastLoadedTopic = null;
 
-        function loadGPX(routeFile, raceTopic, color) {
-            // remove existing layer for this race if present
-            if (gpxLayers[raceTopic]) {
-                try { map.removeLayer(gpxLayers[raceTopic]); } catch (e) {}
-                delete gpxLayers[raceTopic];
-            }
-
-            const options = {
+    function loadGPX(routeFile, topic, color) {
+        // remove existing layer for this topic if present
+        if (gpxLayers[topic]) {
+            try { map.removeLayer(gpxLayers[topic]); } catch (e) {}
+            delete gpxLayers[topic];
+        }                const options = {
                 async: true,
                 marker_options: {
-                    startIconUrl: "start.png",
-                    endIconUrl: "finish.png",
+                    startIconUrl: "assets/images/start.png",
+                    endIconUrl: "assets/images/finish.png",
                 },
                 polyline_options: {
-                    color: color || getColorForRace(raceTopic),
+                    color: color || getColorForTopic(topic),
                     weight: 4,
                     opacity: 0.8
                 }
             };
 
             const layer = new L.GPX(routeFile, options).on('loaded', function(e) {
-                // If this is the last explicitly loaded GPX (single race view), fit bounds and extract routePoints
-                if (!gpxLastLoadedRace || gpxLastLoadedRace === raceTopic) {
+                // If this is the last explicitly loaded GPX (single topic view), fit bounds and extract routePoints
+                if (!gpxLastLoadedTopic || gpxLastLoadedTopic === topic) {
                     try {
                         map.fitBounds(e.target.getBounds());
                     } catch (err) {}
@@ -180,51 +174,75 @@
                     } catch (err) {
                         console.warn('Could not extract route points for leaderboard:', err);
                     }
-                }
-            }).addTo(map);
+            }
+        }).addTo(map);
 
-            gpxLayers[raceTopic] = layer;
-            gpxLastLoadedRace = raceTopic;
-            return layer;
-        }
+        gpxLayers[topic] = layer;
+        gpxLastLoadedTopic = topic;
+        return layer;
+    }        // --- WebSocket Handling (supports multiple sockets for 'All Trails') ---
+    const sockets = {}; // map: topic -> WebSocket
+    const connectionIds = {}; // map: topic -> current conn_id (from backend)
 
-        // --- WebSocket Handling (supports multiple sockets for 'All Races') ---
-        const sockets = {}; // map: topic -> WebSocket
-
-        function connectWebSocket(raceTopic) {
+        function connectWebSocket(topic) {
             // avoid duplicate
-            if (sockets[raceTopic]) return;
+            if (sockets[topic]) return;
 
-            // const wsUrl = `ws://backend-service:8000/ws?race=${raceTopic}`;
-            const wsUrl = `ws://127.0.0.1:8000/ws?race=${raceTopic}`;
+            // const wsUrl = `ws://backend-service:8000/ws?topic=${topic}`;
+            const wsUrl = `ws://127.0.0.1:8000/ws?topic=${topic}`;
             const ws = new WebSocket(wsUrl);
-            sockets[raceTopic] = ws;
+            // store the socket in the mapping immediately
+            sockets[topic] = ws;
+            // reserve a slot for the connection id; will be set when backend sends the first message
+            connectionIds[topic] = null;
+            // tag the socket so messages can verify they're from the active socket
+            ws._topic = topic;
 
-            ws.onopen = () => console.log(`Connected to ${raceTopic}`);
+            ws.onopen = () => console.log(`Connected to ${topic}`);
             ws.onclose = () => {
-                console.log(`Disconnected from ${raceTopic}`);
-                delete sockets[raceTopic];
+                console.log(`Disconnected from ${topic}`);
+                delete sockets[topic];
+                try { delete connectionIds[topic]; } catch (e) {}
             };
             ws.onerror = err => console.error("WebSocket error:", err);
 
             ws.onmessage = event => {
-                const data = JSON.parse(event.data);
-                const athlete = data.athlete;
-                const gender = data.gender;
-                const lat = data.location.latitude;
-                const lon = data.location.longitude;
-                const race = data.race || raceTopic;
+                // Ignore messages from sockets that are no longer the active socket for this topic
+                if (sockets[topic] !== ws) return;
+
+            let data;
+            try { data = JSON.parse(event.data); } catch (err) { return; }
+
+            // If backend attaches a conn_id, ensure it matches the current active conn_id for this topic.
+            // If we haven't established the connectionIds[topic] yet (null), set it from the first message.
+            if (data && data.conn_id) {
+                if (connectionIds[topic] == null) {
+                    connectionIds[topic] = data.conn_id;
+                    // also tag the socket for debugging
+                    try { ws._connId = data.conn_id; } catch (e) {}
+                } else if (connectionIds[topic] !== data.conn_id) {
+                    // message is from a stale/other connection — ignore
+                    return;
+                }
+            }
+            const athlete = data.athlete;
+            const gender = data.gender;
+            const lat = data.location && data.location.latitude;
+            const lon = data.location && data.location.longitude;
+            const athleteTopic = data.topic || topic;
+
+                if (typeof lat !== 'number' || typeof lon !== 'number') return;
 
                 const icon = gender === "male" ? maleIcon : femaleIcon;
 
-                athleteData[athlete] = { lat, lon, race, gender };
+                athleteData[athlete] = { lat, lon, topic: athleteTopic, gender };
 
                 if (athleteMarkers[athlete]) {
-                    athleteMarkers[athlete].setLatLng([lat, lon]);
+                    try { athleteMarkers[athlete].setLatLng([lat, lon]); } catch (e) {}
                 } else {
                     const marker = L.marker([lat, lon], {icon: icon})
                         .addTo(map)
-                        .bindPopup(`<b>${athlete}</b><br>${race}`);
+                        .bindPopup(`<b>${athlete}</b><br>${athleteTopic}`);
                     athleteMarkers[athlete] = marker;
                 }
 
@@ -235,7 +253,16 @@
 
         function closeAllSockets() {
             Object.keys(sockets).forEach(topic => {
-                try { sockets[topic].close(); } catch (e) {}
+                try {
+                    const s = sockets[topic];
+                    if (s) {
+                        // disable handlers to reduce chance of in-flight messages being processed
+                        try { s.onmessage = () => {}; } catch (e) {}
+                        try { s.onclose = () => {}; } catch (e) {}
+                        try { s.onerror = () => {}; } catch (e) {}
+                        s.close();
+                    }
+                } catch (e) {}
                 delete sockets[topic];
             });
         }
@@ -266,7 +293,7 @@
                     const entries = Object.keys(athleteData).map(name => {
                         const a = athleteData[name];
                         const idx = nearestRouteIndex(a.lat, a.lon);
-                        return { name, idx, race: a.race };
+                        return { name, idx, topic: a.topic };
                     });
                     // Sort descending by idx (higher index = further along)
                     entries.sort((a, b) => b.idx - a.idx);
@@ -274,7 +301,7 @@
                     list.innerHTML = '';
                     entries.forEach(e => {
                         const li = document.createElement('li');
-                        li.textContent = `${e.name} (${e.race || ''})`;
+                        li.textContent = `${e.name} (${e.topic || ''})`;
                         list.appendChild(li);
                     });
                 }
@@ -282,77 +309,76 @@
                 // Periodically refresh leaderboard in case of gaps
                 setInterval(updateLeaderboard, 1000);
 
-        // --- Race selection ---
-        const raceSelect = document.getElementById("raceSelect");
-        function raceToGpxFile(selectedRace) {
-            // Map a topic/race name to an existing GPX file under /gpx
-            // If the selectedRace looks like 'race-<name>' we use that name.
-            if (!selectedRace) return 'gpx/trail_route_1.gpx';
-            if (selectedRace.startsWith('race-')) {
-                return `gpx/${selectedRace.replace('race-', '')}.gpx`;
-            }
-            // Known non-race topics -> map to a default GPX
-            const FALLBACK_MAP = {
-                'runner-events': 'gpx/trail_route_1.gpx'
-            };
-            return FALLBACK_MAP[selectedRace] || 'gpx/trail_route_1.gpx';
+    // --- Topic selection ---
+    const topicSelect = document.getElementById("topicSelect");
+    function topicToGpxFile(selectedTopic) {
+        // Map a topic name to an existing GPX file under /gpx
+        // If the selectedTopic looks like 'trail_<name>' we use that name.
+        if (!selectedTopic) return 'gpx/trail_route_1.gpx';
+        if (selectedTopic.startsWith('trail_')) {
+            // topic 'trail_route_1' maps directly to gpx/trail_route_1.gpx
+            return `gpx/${selectedTopic}.gpx`;
         }
-
-        raceSelect.addEventListener("change", (e) => {
-            const selectedRace = e.target.value;
-            console.log("Switching to race:", selectedRace);
-            // Clear existing markers and leaderboard when switching races
-            clearMarkers();
-
-            // Close any existing sockets first
+        // Known legacy topics -> map to a default GPX
+        const FALLBACK_MAP = {
+            'runner-events': 'gpx/trail_route_1.gpx'
+        };
+        return FALLBACK_MAP[selectedTopic] || 'gpx/trail_route_1.gpx';
+    }        topicSelect.addEventListener("change", (e) => {
+            const selectedTopic = e.target.value;
+            console.log("Switching to topic:", selectedTopic);
+            // Close any existing sockets first (prevent new incoming messages)
             closeAllSockets();
 
-            if (selectedRace === 'all') {
-                // Open sockets for every race option found in the select
-                const raceOptions = [];
-                for (const opt of raceSelect.options) {
+            // Clear existing markers and leaderboard when switching topics
+            clearMarkers();
+
+            if (selectedTopic === 'all') {
+                // Open sockets for every trail topic found in the select
+                const topicOptions = [];
+                for (const opt of topicSelect.options) {
                     const v = opt.value;
-                    if (v && v.startsWith('race-')) {
-                        raceOptions.push(v);
+                    if (v && v.startsWith('trail_')) {
+                        topicOptions.push(v);
                     }
                 }
 
-                // open sockets and load GPX for each race with a distinct color
+                // open sockets and load GPX for each topic with a distinct color
                 clearGpxLayers();
-                for (let i = 0; i < raceOptions.length; i++) {
-                    const v = raceOptions[i];
+                for (let i = 0; i < topicOptions.length; i++) {
+                    const v = topicOptions[i];
                     connectWebSocket(v);
-                    const gpxFile = raceToGpxFile(v);
-                    loadGPX(gpxFile, v, getColorForRace(v));
+                    const gpxFile = topicToGpxFile(v);
+                    loadGPX(gpxFile, v, getColorForTopic(v));
                 }
                 return;
             }
 
-            connectWebSocket(selectedRace);
+            connectWebSocket(selectedTopic);
 
-            // Load corresponding GPX (map non-race topics to a default GPX)
+            // Load corresponding GPX (map legacy topics to a default GPX)
             clearGpxLayers();
-            const gpxFile = raceToGpxFile(selectedRace);
-            loadGPX(gpxFile, selectedRace, getColorForRace(selectedRace));
+            const gpxFile = topicToGpxFile(selectedTopic);
+            loadGPX(gpxFile, selectedTopic, getColorForTopic(selectedTopic));
         });
 
         // Initialize first connection using the current select value
-        const initialRace = raceSelect.value;
-        if (initialRace === 'all') {
-            // connect to all races and load their GPX layers
-            const raceOptions = [];
-            for (const opt of raceSelect.options) {
+        const initialTopic = topicSelect.value;
+        if (initialTopic === 'all') {
+            // connect to all topics and load their GPX layers
+            const topicOptions = [];
+                for (const opt of topicSelect.options) {
                 const v = opt.value;
-                if (v && v.startsWith('race-')) raceOptions.push(v);
+                if (v && v.startsWith('trail_')) topicOptions.push(v);
             }
-            for (const v of raceOptions) {
+            for (const v of topicOptions) {
                 connectWebSocket(v);
-                const gpxFile = raceToGpxFile(v);
-                loadGPX(gpxFile, v, getColorForRace(v));
+                const gpxFile = topicToGpxFile(v);
+                loadGPX(gpxFile, v, getColorForTopic(v));
             }
         } else {
-            connectWebSocket(initialRace);
-            loadGPX(raceToGpxFile(initialRace), initialRace, getColorForRace(initialRace));
+            connectWebSocket(initialTopic);
+            loadGPX(topicToGpxFile(initialTopic), initialTopic, getColorForTopic(initialTopic));
         }
     </script>
 </body>
