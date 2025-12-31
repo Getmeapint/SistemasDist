@@ -63,3 +63,28 @@ jobs:
           tags: |
             ${{ env.SIMULATOR_IMAGE }}:${{ steps.vars.outputs.tag }}
 
+      - name: Update Helm values with new tags
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          tag = "${{ steps.vars.outputs.tag }}"
+          path = Path("chart/values.yaml")
+          data = yaml.safe_load(path.read_text())
+
+          data["frontend"]["image"] = f"{data['frontend']['image'].split(':')[0]}:{tag}"
+          data["backend"]["image"] = f"{data['backend']['image'].split(':')[0]}:{tag}"
+          data["simulator"]["image"] = f"{data['simulator']['image'].split(':')[0]}:{tag}"
+
+          path.write_text(yaml.safe_dump(data, sort_keys=False))
+          PY
+
+      - name: Commit updated values.yaml
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git config --global url."https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git add chart/values.yaml
+          git commit -m "chore: bump image tags to ${{ steps.vars.outputs.tag }} [skip ci]" || echo "No changes to commit"
+          git push
