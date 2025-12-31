@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.5.1/gpx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -44,12 +45,11 @@
     <div id="controls">
         <label for="raceSelect">Select Race:</label>
         <select id="raceSelect">
-            <option value="runner-events">Default Race</option>
-            <option value="all">All Races</option>
+            <option value="all" selected>All Races</option>
             <option value="race-trail_route_1">Trail Route 1</option>
             <option value="race-trail_route_2">Trail Route 2</option>
-            <!-- <option value="race-trail_route_3">Trail Route 3</option>
-            <option value="race-trail_route_4">Trail Route 4</option> -->
+            <option value="race-trail_route_3">Trail Route 3</option>
+            <option value="race-trail_route_4">Trail Route 4</option>
         </select>
         <div id="leaderboard">
             <h4>Leaderboard</h4>
@@ -67,15 +67,18 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
+        // Initialize global route features object FIRST
+        window.raceLineFeatures = {};
+
         // Icons
         const maleIcon = L.icon({
-            iconUrl: "male.png",
+            iconUrl: "/male.png",
             iconSize: [28, 65],
             iconAnchor: [12, 64],
             popupAnchor: [-3, -46]
         });
         const femaleIcon = L.icon({
-            iconUrl: "female.png",
+            iconUrl: "/female.png",
             iconSize: [28, 65],
             iconAnchor: [12, 64],
             popupAnchor: [-3, -46]
@@ -109,6 +112,8 @@
         // GPX layer management
         // Support multiple GPX layers (one per race) so 'All Races' can show all tracks
         const gpxLayers = {}; // map: raceTopic -> L.GPX layer
+        const raceRoutePoints = {}; // map: raceTopic -> array of route points
+        const raceCumulativeDistances = {}; // map: raceTopic -> cumulative distances (km) for each point
 
         // Simple color palette to distinguish races
         const COLOR_PALETTE = [
@@ -128,6 +133,8 @@
                 try { map.removeLayer(gpxLayers[k]); } catch (e) {}
                 delete gpxLayers[k];
             });
+            Object.keys(raceRoutePoints).forEach(k => delete raceRoutePoints[k]);
+            Object.keys(raceCumulativeDistances).forEach(k => delete raceCumulativeDistances[k]);
             routePoints = [];
         }
 
@@ -146,6 +153,7 @@
                 marker_options: {
                     startIconUrl: "start.png",
                     endIconUrl: "finish.png",
+                    shadowUrl: "" // prevent requests to missing pin-shadow.png
                 },
                 polyline_options: {
                     color: color || getColorForRace(raceTopic),
@@ -155,32 +163,125 @@
             };
 
             const layer = new L.GPX(routeFile, options).on('loaded', function(e) {
-                // If this is the last explicitly loaded GPX (single race view), fit bounds and extract routePoints
-                if (!gpxLastLoadedRace || gpxLastLoadedRace === raceTopic) {
-                    try {
-                        map.fitBounds(e.target.getBounds());
-                    } catch (err) {}
+                // Extract polyline points for this race and store per-race
+                let points = [];
+                try {
+                    console.log(`GPX loaded for ${raceTopic}`);
 
-                    // Extract polyline points for leaderboard/progress calculation
-                    routePoints = [];
-                    try {
-                        const layers = e.target.getLayers ? e.target.getLayers() : [];
-                        layers.forEach(function(layer) {
-                            if (layer instanceof L.Polyline) {
-                                const latlngs = layer.getLatLngs();
-                                latlngs.forEach(function(item) {
-                                    if (Array.isArray(item)) {
-                                        item.forEach(function(p) { routePoints.push([p.lat, p.lng]); });
-                                    } else {
-                                        routePoints.push([item.lat, item.lng]);
+                    // Preferred: convert the loaded GPX layer to GeoJSON and read the line geometry
+                    const gj = (e.target && typeof e.target.toGeoJSON === 'function') ? e.target.toGeoJSON() : null;
+                    if (gj) {
+                        const features = Array.isArray(gj.features) ? gj.features : (gj.type === 'Feature' ? [gj] : []);
+                        features.forEach(f => {
+                            if (!f.geometry) return;
+                            const { type, coordinates } = f.geometry;
+                            if (type === 'LineString' && Array.isArray(coordinates)) {
+                                coordinates.forEach(coord => {
+                                    if (Array.isArray(coord) && coord.length >= 2) {
+                                        points.push([coord[1], coord[0]]);
+                                    }
+                                });
+                            } else if (type === 'MultiLineString' && Array.isArray(coordinates)) {
+                                coordinates.forEach(line => {
+                                    if (Array.isArray(line)) {
+                                        line.forEach(coord => {
+                                            if (Array.isArray(coord) && coord.length >= 2) {
+                                                points.push([coord[1], coord[0]]);
+                                            }
+                                        });
                                     }
                                 });
                             }
                         });
-                    } catch (err) {
-                        console.warn('Could not extract route points for leaderboard:', err);
+                        if (points.length > 0) {
+                            console.log(`  Extracted ${points.length} points via toGeoJSON()`);
+                        }
                     }
+                    
+                    // Try direct getLatLngs on the GPX layer
+                    if (points.length === 0 && e.target && typeof e.target.getLatLngs === 'function') {
+                        const latlngs = e.target.getLatLngs();
+                        console.log(`  Got ${latlngs.length} points from getLatLngs()`);
+                        if (Array.isArray(latlngs)) {
+                            latlngs.forEach(function(item) {
+                                if (item && item.lat !== undefined && item.lng !== undefined) {
+                                    points.push([item.lat, item.lng]);
+                                }
+                            });
+                        }
+                    }
+                    
+                    // Try accessing _layers property directly if getLatLngs didn't work
+                    if (points.length === 0 && e.target && e.target._layers) {
+                        console.log('  Trying _layers property...');
+                        Object.keys(e.target._layers).forEach(function(key) {
+                            const layer = e.target._layers[key];
+                            console.log(`    Layer ${key}:`, layer.constructor.name, `has getLatLngs:`, typeof layer.getLatLngs);
+                            if (typeof layer.getLatLngs === 'function') {
+                                try {
+                                    const latlngs = layer.getLatLngs();
+                                    console.log(`      Got ${latlngs.length} points`);
+                                    latlngs.forEach(function(item) {
+                                        if (item && item.lat !== undefined && item.lng !== undefined) {
+                                            points.push([item.lat, item.lng]);
+                                        }
+                                    });
+                                } catch (err) {
+                                    console.log(`      Error getting points:`, err.message);
+                                }
+                            }
+                        });
+                    }
+                    
+                } catch (err) {
+                    console.warn('Could not extract route points:', err);
                 }
+                raceRoutePoints[raceTopic] = points;
+                console.log(`Result: Loaded ${points.length} points for ${raceTopic}`);
+                
+                // Only create lineString if we have valid points (at least 2)
+                if (points.length < 2) {
+                    console.warn(`Route ${raceTopic} has insufficient points (${points.length}), skipping distance calculations`);
+                    window.raceLineFeatures[raceTopic] = null;
+                    return;
+                }
+                
+                // Create a GeoJSON LineString from the points for use with turf.js
+                // Turf uses [lon, lat] order, not [lat, lon]
+                const lineCoords = points.map(p => [p[1], p[0]]);
+                let routeLine;
+                try {
+                    routeLine = turf.lineString(lineCoords);
+                } catch (err) {
+                    console.error(`Failed to create lineString for ${raceTopic}:`, err);
+                    window.raceLineFeatures[raceTopic] = null;
+                    return;
+                }
+                
+                // Store the line feature for distance calculations
+                if (!window.raceLineFeatures) window.raceLineFeatures = {};
+                window.raceLineFeatures[raceTopic] = routeLine;
+                
+                // Calculate total distance in km
+                const totalDistanceKm = turf.length(routeLine, { units: 'kilometers' });
+                console.log(`${raceTopic}: Total distance = ${totalDistanceKm.toFixed(2)}km`);
+                
+                // Pre-calculate cumulative distances at each point for reference
+                const cumulativeDistances = [0];
+                for (let i = 1; i < points.length; i++) {
+                    const segmentLine = turf.lineString([lineCoords[i-1], lineCoords[i]]);
+                    const segmentDistKm = turf.length(segmentLine, { units: 'kilometers' });
+                    cumulativeDistances.push(cumulativeDistances[cumulativeDistances.length - 1] + segmentDistKm);
+                }
+                raceCumulativeDistances[raceTopic] = cumulativeDistances;
+                
+                // Also set global routePoints for single-race view
+                routePoints = points;
+                
+                // Fit bounds for the first race or for single-race views
+                try {
+                    map.fitBounds(e.target.getBounds());
+                } catch (err) {}
             }).addTo(map);
 
             gpxLayers[raceTopic] = layer;
@@ -195,8 +296,9 @@
             // avoid duplicate
             if (sockets[raceTopic]) return;
 
-            // const wsUrl = `ws://backend-service:8000/ws?race=${raceTopic}`;
-            const wsUrl = `ws://127.0.0.1:8000/ws?race=${raceTopic}`;
+            // Use window.location.hostname to connect to backend; in Docker it resolves to service name, locally to localhost
+            // When running locally via port-forward use 8000; adjust if you expose a different port
+            const wsUrl = `ws://${window.location.hostname}:8000/ws?race=${raceTopic}`;
             const ws = new WebSocket(wsUrl);
             sockets[raceTopic] = ws;
 
@@ -240,42 +342,97 @@
             });
         }
 
-                // Compute nearest index on the route for a given lat/lon
-                function nearestRouteIndex(lat, lon) {
-                    if (!routePoints || routePoints.length === 0) return -1;
-                    let bestI = -1;
-                    let bestDist = Infinity;
-                    for (let i = 0; i < routePoints.length; i++) {
-                        const p = routePoints[i];
-                        const dx = p[0] - lat;
-                        const dy = p[1] - lon;
-                        const d2 = dx * dx + dy * dy;
-                        if (d2 < bestDist) {
-                            bestDist = d2;
-                            bestI = i;
-                        }
+                // Compute distance along route for a given lat/lon using the athlete's race route
+                function nearestRouteIndex(lat, lon, raceTopicForAthlete) {
+                    const routeLine = window.raceLineFeatures && window.raceLineFeatures[raceTopicForAthlete];
+                    const points = raceRoutePoints[raceTopicForAthlete] || [];
+                    
+                    if (!routeLine || points.length === 0) {
+                        console.warn(`nearestRouteIndex: No route found for ${raceTopicForAthlete}. Available routes:`, window.raceLineFeatures ? Object.keys(window.raceLineFeatures) : 'none');
+                        return { index: -1, distance: 0, totalDistance: 0 };
                     }
-                    return bestI;
+                    
+                    // Create a point feature from athlete position [lon, lat] for turf
+                    const athletePoint = turf.point([lon, lat]);
+                    
+                    // Find the closest point on the route line (allows tolerance off path)
+                    const snappedPoint = turf.nearestPointOnLine(routeLine, athletePoint);
+                    const segmentIndex = snappedPoint.properties.index || 0;
+                    
+                    // Convert points to [lon, lat] for turf
+                    const lineCoords = points.map(p => [p[1], p[0]]);
+                    
+                    // Calculate distance from start to this segment
+                    let distanceToSegmentStart = 0;
+                    if (segmentIndex > 0) {
+                        const segmentStartLine = turf.lineString(lineCoords.slice(0, segmentIndex + 1));
+                        distanceToSegmentStart = turf.length(segmentStartLine, { units: 'kilometers' });
+                    }
+                    
+                    // Calculate distance along the segment from segment start to snapped point
+                    const segmentStart = turf.point(lineCoords[segmentIndex]);
+                    const distAlongSegment = turf.distance(segmentStart, snappedPoint, { units: 'kilometers' });
+                    
+                    // Total distance along route
+                    const distanceAlongRoute = distanceToSegmentStart + distAlongSegment;
+                    
+                    // Get total route distance
+                    const totalDistance = turf.length(routeLine, { units: 'kilometers' });
+                    
+                    return { 
+                        index: segmentIndex, 
+                        distance: distanceAlongRoute,
+                        totalDistance: totalDistance
+                    };
                 }
 
-                // Update leaderboard DOM by sorting athletes by progress along route
+                // Update leaderboard DOM by sorting athletes by progress within their own race
                 function updateLeaderboard() {
                     const list = document.getElementById('leaderboardList');
                     if (!list) return;
-                    // Build array of {name, idx}
+                    
+                    // Build array of {name, progress, race, distance}
                     const entries = Object.keys(athleteData).map(name => {
                         const a = athleteData[name];
-                        const idx = nearestRouteIndex(a.lat, a.lon);
-                        return { name, idx, race: a.race };
+                        const result = nearestRouteIndex(a.lat, a.lon, a.race);
+                        
+                        // result is now an object with { index, distance, totalDistance }
+                        let athleteDistance = 0;
+                        let totalDistance = 0;
+                        
+                        if (typeof result === 'object' && result !== null) {
+                            athleteDistance = result.distance || 0;
+                            totalDistance = result.totalDistance || 0;
+                        }
+                        
+                        const progress = totalDistance > 0 ? (athleteDistance / totalDistance) * 100 : 0;
+                        if (athleteDistance > 0) {
+                            console.log(`${name} (${a.race}): ${athleteDistance.toFixed(2)}km / ${totalDistance.toFixed(2)}km total`);
+                        }
+                        return { name, progress, race: a.race, distance: athleteDistance };
                     });
-                    // Sort descending by idx (higher index = further along)
-                    entries.sort((a, b) => b.idx - a.idx);
-                    // Build HTML
-                    list.innerHTML = '';
+                    
+                    // Group by race and sort within each race
+                    const byRace = {};
                     entries.forEach(e => {
-                        const li = document.createElement('li');
-                        li.textContent = `${e.name} (${e.race || ''})`;
-                        list.appendChild(li);
+                        if (!byRace[e.race]) byRace[e.race] = [];
+                        byRace[e.race].push(e);
+                    });
+                    
+                    // Sort each race's athletes by distance (descending)
+                    Object.keys(byRace).forEach(race => {
+                        byRace[race].sort((a, b) => b.distance - a.distance);
+                    });
+                    
+                    // Build HTML with per-race rankings showing distance
+                    list.innerHTML = '';
+                    Object.keys(byRace).sort().forEach(race => {
+                        byRace[race].forEach((e, position) => {
+                            const li = document.createElement('li');
+                            const raceName = race.replace('race-', '');
+                            li.textContent = `${raceName}: ${position + 1}. ${e.name} (${e.distance.toFixed(2)}km / ${Math.round(e.progress)}%)`;
+                            list.appendChild(li);
+                        });
                     });
                 }
 
@@ -308,7 +465,11 @@
             closeAllSockets();
 
             if (selectedRace === 'all') {
-                // Open sockets for every race option found in the select
+                // Open a single WebSocket with race=all parameter; backend broadcasts all runners
+                clearGpxLayers();
+                connectWebSocket('all');
+                
+                // Load all race GPX files for visualization
                 const raceOptions = [];
                 for (const opt of raceSelect.options) {
                     const v = opt.value;
@@ -316,12 +477,8 @@
                         raceOptions.push(v);
                     }
                 }
-
-                // open sockets and load GPX for each race with a distinct color
-                clearGpxLayers();
                 for (let i = 0; i < raceOptions.length; i++) {
                     const v = raceOptions[i];
-                    connectWebSocket(v);
                     const gpxFile = raceToGpxFile(v);
                     loadGPX(gpxFile, v, getColorForRace(v));
                 }
@@ -339,14 +496,17 @@
         // Initialize first connection using the current select value
         const initialRace = raceSelect.value;
         if (initialRace === 'all') {
-            // connect to all races and load their GPX layers
+            // connect with race=all (single connection; backend broadcasts all)
+            clearGpxLayers();
+            connectWebSocket('all');
+            
+            // Load all race GPX layers
             const raceOptions = [];
             for (const opt of raceSelect.options) {
                 const v = opt.value;
                 if (v && v.startsWith('race-')) raceOptions.push(v);
             }
             for (const v of raceOptions) {
-                connectWebSocket(v);
                 const gpxFile = raceToGpxFile(v);
                 loadGPX(gpxFile, v, getColorForRace(v));
             }

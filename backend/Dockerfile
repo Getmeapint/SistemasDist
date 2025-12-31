@@ -1,7 +1,8 @@
 # Usar a imagem base do Python
 FROM python:3.9-slim
 
-RUN pip install fastapi uvicorn[standard] aio-pika aiokafka
+# Install dependencies (including Prometheus instrumentation)
+RUN pip install --no-cache-dir fastapi uvicorn[standard] aio-pika aiohttp prometheus-fastapi-instrumentator
 
 WORKDIR /app
 COPY backend.py /app/backend.py

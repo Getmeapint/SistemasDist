@@ -1,68 +1,65 @@
-version: "3.8"
 
 services:
-  kafka:
-    image: confluentinc/cp-kafka:7.5.1
-    container_name: kafka
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
     ports:
-      - "9092:9092"
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      # === KRaft Mode (no ZooKeeper) ===
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_NODE_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"  # random 22-character base64 string, can be static
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - app-network
  
   backend:
- 
-    image: manufreit/sd-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     networks:
       - app-network
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+    depends_on:
+      - rabbitmq
+    # no GPX mount required for backend; backend discovers exchanges via RabbitMQ management API
 
   simulator:
-
-    image: manufreit/sd-simulator:latest
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
     networks:
       - app-network
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
       - GPX_FILES_FOLDER=/app/gpx
     volumes:
       - ./simulator/gpx:/app/gpx
+    depends_on:
+      - rabbitmq
 
 
   frontend:
-    image: manufreit/sd-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "8080:80"
     networks:
       - app-network
-    volumes:
-      - ./frontend/index.html:/usr/share/nginx/html
-      - ./simulator/gpx:/usr/share/nginx/html/gpx
-      - ./frontend/assets:/usr/share/nginx/html/
-
 networks:
   app-network:
     driver: bridge
 
 volumes:
-  kafka_data:
+  rabbitmq_data:

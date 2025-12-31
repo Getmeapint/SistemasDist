@@ -9,37 +9,50 @@ metadata:
   name: simulator
   labels:
     app: simulator
+    app.kubernetes.io/name: simulator
+    app.kubernetes.io/instance: sd
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: simulator
+      app.kubernetes.io/name: simulator
+      app.kubernetes.io/instance: sd
   template:
     metadata:
       labels:
         app: simulator
+        app.kubernetes.io/name: simulator
+        app.kubernetes.io/instance: sd
     spec:
       containers:
         - name: simulator
-          image: manufreit/sd-simulador:latest
+          image: {{ .Values.simulator.image | default "manufreit/sd-simulator:latest" }}
           env:
-            - name: KAFKA_BOOTSTRAP_SERVERS
-              value: kafka-service:9092
+            - name: RABBITMQ_HOST
+              value: {{ .Values.rabbitmq.host | default "rabbitmq" | quote }}
+            - name: RABBITMQ_PORT
+              value: {{ .Values.rabbitmq.port | default 5672 | quote }}
+            - name: RABBITMQ_USER
+              value: {{ .Values.rabbitmq.user | quote }}
+            - name: RABBITMQ_PASSWORD
+              value: {{ .Values.rabbitmq.password | quote }}
             - name: GPX_FILES_FOLDER
-              value: /app/gpx   
-          ports:
-            - containerPort: 8000
+              value: {{ .Values.simulator.gpxFolder | default "/app/gpx" | quote }}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: simulator
+  labels:
+    app: simulator
 spec:
   selector:
     app: simulator
   ports:
-    - protocol: TCP
+    - name: http
+      protocol: TCP
       port: 8000
       targetPort: 8000
   type: ClusterIP   

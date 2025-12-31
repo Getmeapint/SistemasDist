@@ -9,19 +9,25 @@ metadata:
   name: frontend
   labels:
     app: frontend
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/instance: sd
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: frontend
+      app.kubernetes.io/name: frontend
+      app.kubernetes.io/instance: sd
   template:
     metadata:
       labels:
         app: frontend
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/instance: sd
     spec:
       containers:
         - name: frontend
-          image: manufreit/sd-frontend:latest
+          image: {{ .Values.frontend.image | default "manufreit/sd-frontend:latest" }}
           ports:
             - containerPort: 80
           #
@@ -47,4 +53,3 @@ spec:
     - protocol: TCP
       port: 80      
       targetPort: 80 
-      nodePort: 30081 

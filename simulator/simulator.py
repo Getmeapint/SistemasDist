@@ -3,12 +3,15 @@ import time
 import random
 import glob
 import os
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
+import pika
+from pika.exceptions import AMQPConnectionError
 import json
 from threading import Thread
 
-KAFKA_BOOTSTRAP_SERVERS = "kafka-service:9092"
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
+RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
+RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "guest")
 
 BASE_TOPIC_PREFIX = "race-"   
 
@@ -25,36 +28,40 @@ ATHLETES = [
 ]
 SPEED_VARIATION = (6, 12) 
 
-def wait_for_kafka(bootstrap_servers, retries=10, delay=2):
+def wait_for_rabbitmq(retries=10, delay=2):
+    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)
     for i in range(retries):
         try:
-            producer = KafkaProducer(
-                bootstrap_servers=bootstrap_servers,
-                value_serializer=lambda v: json.dumps(v).encode("utf-8")
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(
+                    host=RABBITMQ_HOST,
+                    port=RABBITMQ_PORT,
+                    credentials=credentials,
+                    connection_attempts=1,
+                    retry_delay=1
+                )
             )
-            print("Connected to Kafka!")
-            return producer
-        except NoBrokersAvailable:
-            print(f"Kafka not ready, retrying in {delay}s... ({i+1}/{retries})")
+            channel = connection.channel()
+            print("Connected to RabbitMQ!")
+            connection.close()
+            return True
+        except AMQPConnectionError:
+            print(f"RabbitMQ not ready, retrying in {delay}s... ({i+1}/{retries})")
             time.sleep(delay)
-    raise Exception("Unable to connect to Kafka after retries")
+    raise Exception("Unable to connect to RabbitMQ after retries")
 
-_producer = None
-def get_producer(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS):
-    """Return a singleton KafkaProducer, creating it on first use."""
-    global _producer
-    if _producer is None:
-        _producer = wait_for_kafka(bootstrap_servers)
-    return _producer
-
-def flush_producer():
-    """Flush the global producer if it exists. Safe to call at shutdown."""
-    global _producer
-    if _producer is not None:
-        try:
-            _producer.flush()
-        except Exception as e:
-            print("Error flushing producer:", e)
+def get_channel():
+    """Create a new RabbitMQ channel."""
+    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(
+            host=RABBITMQ_HOST,
+            port=RABBITMQ_PORT,
+            credentials=credentials
+        )
+    )
+    channel = connection.channel()
+    return connection, channel
 
 def load_trails(folder=GPX_FILES_FOLDER):
     races = {}  
@@ -76,7 +83,10 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
     athlete_gender = athlete["gender"]
     speed_mps = speed_kmh / 3.6
 
-    producer = get_producer()
+    connection, channel = get_channel()
+    
+    # Declare the exchange
+    channel.exchange_declare(exchange=race_topic, exchange_type='fanout', durable=True)
 
     for i in range(len(points) - 1):
         start = points[i]
@@ -103,14 +113,21 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
             }
 
             try:
-                producer.send(race_topic, event)
+                channel.basic_publish(
+                    exchange=race_topic,
+                    routing_key='',
+                    body=json.dumps(event)
+                )
                 print(f"[{race_topic}] Sent {athlete_name} @ ({lat:.5f}, {lon:.5f})")
             except Exception as e:
-                print(f"Error sending event to Kafka: {e}")
+                print(f"Error sending event to RabbitMQ: {e}")
 
             time.sleep(1)
+    
+    connection.close()
 
 def simulate_multiple_athletes():
+    wait_for_rabbitmq()
     races = load_trails(GPX_FILES_FOLDER)
     if not races:
         print("No GPX races found!")
@@ -173,11 +190,6 @@ def simulate_multiple_athletes():
 
     for thread in threads:
         thread.join()
-
-    try:
-        flush_producer()
-    except Exception:
-        pass
 
 if __name__ == "__main__":
     simulate_multiple_athletes()

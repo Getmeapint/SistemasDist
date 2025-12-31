@@ -2,7 +2,7 @@
 FROM python:3.9-slim
 
 # Instalar dependências
-RUN pip install requests gpxpy pika kafka-python
+RUN pip install requests gpxpy pika
 
 # Copiar o código do simulador
 WORKDIR /app
