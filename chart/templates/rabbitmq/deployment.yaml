@@ -1,8 +1,4 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: sd
----
+{{- if .Values.rabbitmq.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,3 +50,4 @@ spec:
       port: {{ .Values.rabbitmq.managementPort | default 15672 }}
       targetPort: {{ .Values.rabbitmq.managementPort | default 15672 }}
   type: ClusterIP
+{{- end }}

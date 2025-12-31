@@ -1,16 +1,20 @@
 backend:
+  enabled: true
   image: manufreit/sd-backend:latest
   port: 8000
 simulator:
+  enabled: true
   image: manufreit/sd-simulator:latest
   gpxFolder: /app/gpx
 frontend:
+  enabled: true
   image: manufreit/sd-frontend:latest
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
 rabbitmq:
+  enabled: true
   host: rabbitmq
   port: 5672
   managementPort: 15672
-  user: guest
-  password: guest
+  user: grupo5
+  password: gMEEEs4jg9
