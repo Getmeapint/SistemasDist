@@ -36,7 +36,7 @@ spec:
             - name: GPX_FILES_FOLDER
               value: {{ .Values.simulator.gpxFolder | default "/app/gpx" | quote }}
           ports:
-            - containerPort: {{ .Values.simulator.port | default 8000 }}
+            - containerPort: 8000
 
 ---
 apiVersion: v1
@@ -52,6 +52,6 @@ spec:
     - name: http
       protocol: TCP
       port: {{ .Values.simulator.port | default 8000 }}
-      targetPort: {{ .Values.simulator.port | default 8000 }}
+      targetPort: 8000
   type: ClusterIP   
 {{- end }}
