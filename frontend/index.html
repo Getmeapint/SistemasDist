@@ -298,9 +298,10 @@
 
             // Use window.location.hostname to connect to backend; in Docker it resolves to service name, locally to localhost
             // When running locally via port-forward use 8000; adjust if you expose a different port
-            const wsUrl = `ws://${window.location.hostname}:30015/ws?race=${raceTopic}`;
+            const wsUrl = `ws://${window.location.hostname}:305/ws?race=${raceTopic}`;
             const ws = new WebSocket(wsUrl);
             sockets[raceTopic] = ws;
+            //ner
 
             ws.onopen = () => console.log(`Connected to ${raceTopic}`);
             ws.onclose = () => {
