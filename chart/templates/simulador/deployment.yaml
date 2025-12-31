@@ -1,3 +1,4 @@
+{{- if .Values.simulator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,7 +26,7 @@ spec:
           image: {{ .Values.simulator.image | default "manufreit/sd-simulator:latest" }}
           env:
             - name: RABBITMQ_HOST
-              value: {{ .Values.rabbitmq.host | default "rabbitmq" | quote }}
+              value: {{ (ternary "rabbitmq.10.2.15.161.nip.io" (.Values.rabbitmq.host | default "rabbitmq") (not .Values.rabbitmq.enabled)) | quote }}
             - name: RABBITMQ_PORT
               value: {{ .Values.rabbitmq.port | default 5672 | quote }}
             - name: RABBITMQ_USER
@@ -34,6 +35,8 @@ spec:
               value: {{ .Values.rabbitmq.password | quote }}
             - name: GPX_FILES_FOLDER
               value: {{ .Values.simulator.gpxFolder | default "/app/gpx" | quote }}
+          ports:
+            - containerPort: {{ .Values.simulator.port | default 8000 }}
 
 ---
 apiVersion: v1
@@ -48,6 +51,7 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: 8000
-      targetPort: 8000
+      port: {{ .Values.simulator.port | default 8000 }}
+      targetPort: {{ .Values.simulator.port | default 8000 }}
   type: ClusterIP   
+{{- end }}

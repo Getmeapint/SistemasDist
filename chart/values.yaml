@@ -1,14 +1,16 @@
 backend:
   enabled: true
   image: manufreit/sd-backend:latest
-  port: 8000
+  port: 30015
 simulator:
   enabled: true
   image: manufreit/sd-simulator:latest
+  port: 30035
   gpxFolder: /app/gpx
 frontend:
   enabled: true
   image: manufreit/sd-frontend:latest
+  port: 30025
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
 rabbitmq:
