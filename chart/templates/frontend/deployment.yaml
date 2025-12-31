@@ -25,7 +25,7 @@ spec:
         - name: frontend
           image: {{ .Values.frontend.image | default "manufreit/sd-frontend:latest" }}
           ports:
-            - containerPort: {{ .Values.frontend.port | default 80 }}
+            - containerPort: 80
           #
           # volumeMounts:
           #   - name: gpx-files
@@ -48,5 +48,5 @@ spec:
   ports:
     - protocol: TCP
       port: {{ .Values.frontend.port | default 80 }}
-      targetPort: {{ .Values.frontend.port | default 80 }}
+      targetPort: 80
 {{- end }}
