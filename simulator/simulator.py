@@ -8,15 +8,16 @@ from pika.exceptions import AMQPConnectionError
 import json
 from threading import Thread
 
-RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
-RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
-RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "grupo5")
-RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "gMEEEs4jg9")
+# RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
+# RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+# RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "grupo5")
+# RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "z1x2c3v4b5n6")
 
-RABBITMQ_HOST = "rabbitmq-cluster.rabbitmq-system.svc.cluster.local"
+RABBITMQ_HOST = "127.0.0.1"
 RABBITMQ_PORT = 5672
 RABBITMQ_USER = "grupo5"
 RABBITMQ_PASSWORD = "z1x2c3v4b5n6"
+
 
 BASE_TOPIC_PREFIX = "race-"   
 
@@ -34,6 +35,7 @@ ATHLETES = [
 SPEED_VARIATION = (6, 12) 
 
 def wait_for_rabbitmq(retries=10, delay=2):
+    print(f"Connecting to RabbitMQ at {RABBITMQ_HOST}:{RABBITMQ_PORT} as {RABBITMQ_USER}...")
     credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)
     for i in range(retries):
         try:
@@ -57,6 +59,7 @@ def wait_for_rabbitmq(retries=10, delay=2):
 
 def get_channel():
     """Create a new RabbitMQ channel."""
+    print(f"Opening RabbitMQ channel to {RABBITMQ_HOST}:{RABBITMQ_PORT} as {RABBITMQ_USER}")
     credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASSWORD)
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(
