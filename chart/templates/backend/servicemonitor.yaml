@@ -3,7 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: backend
-  namespace: sd
+  namespace: {{ .Release.Namespace | default "grupo5" }}
   labels:
     app: backend
     release: monitoring
