@@ -20,8 +20,7 @@ rabbitmq:
   managementPort: 15672
   user: grupo5
   password: z1x2c3v4b5n6
-
-
+  vhost: grupo5
 
 
 

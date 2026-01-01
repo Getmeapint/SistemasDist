@@ -12,6 +12,7 @@ RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
 RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "guest")
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
 
 
 BASE_TOPIC_PREFIX = "race-"   
@@ -38,6 +39,7 @@ def wait_for_rabbitmq(retries=10, delay=2):
                 pika.ConnectionParameters(
                     host=RABBITMQ_HOST,
                     port=RABBITMQ_PORT,
+                    virtual_host=RABBITMQ_VHOST,
                     credentials=credentials,
                     connection_attempts=1,
                     retry_delay=1
@@ -60,6 +62,7 @@ def get_channel():
         pika.ConnectionParameters(
             host=RABBITMQ_HOST,
             port=RABBITMQ_PORT,
+            virtual_host=RABBITMQ_VHOST,
             credentials=credentials
         )
     )

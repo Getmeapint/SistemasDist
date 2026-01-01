@@ -33,6 +33,8 @@ spec:
               value: {{ .Values.rabbitmq.user | quote }}
             - name: RABBITMQ_PASSWORD
               value: {{ .Values.rabbitmq.password | quote }}
+            - name: RABBITMQ_VHOST
+              value: {{ .Values.rabbitmq.vhost | default "/" | quote }}
             - name: GPX_FILES_FOLDER
               value: {{ .Values.simulator.gpxFolder | default "/app/gpx" | quote }}
           ports:
