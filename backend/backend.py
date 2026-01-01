@@ -8,13 +8,17 @@ import aio_pika
 import socket
 import os
 import aiohttp
+from urllib.parse import quote
 from typing import Optional, List, Dict, Set
 
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+RABBITMQ_MGMT_PORT = int(os.environ.get("RABBITMQ_MGMT_PORT", 15672))
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
 RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "guest")
-RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+RABBITMQ_VHOST_PATH = RABBITMQ_VHOST if RABBITMQ_VHOST.startswith("/") else f"/{RABBITMQ_VHOST}"
+RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}{RABBITMQ_VHOST_PATH}"
 DEFAULT_TOPIC = "runner-events"
 
 app = FastAPI()
@@ -82,7 +86,9 @@ ws_disconnections = Counter(
 
 async def discover_and_bind_exchanges():
     """Discover exchanges via RabbitMQ management API and bind backend queue to them."""
-    mgmt_url = f"http://{RABBITMQ_HOST}:15672/api/exchanges/"
+    mgmt_url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/exchanges/{RABBITMQ_VHOST}"
+    mgmt_vhost = quote(RABBITMQ_VHOST, safe="")
+    mgmt_url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/exchanges/{mgmt_vhost}"
     auth = aiohttp.BasicAuth(RABBITMQ_USER, RABBITMQ_PASSWORD)
 
     try:
