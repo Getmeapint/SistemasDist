@@ -8,10 +8,10 @@ from pika.exceptions import AMQPConnectionError
 import json
 from threading import Thread
 
-RABBITMQ_HOST = "rabbitmq-cluster.rabbitmq-system.svc.cluster.local"
-RABBITMQ_PORT = int(5672)
-RABBITMQ_USER = "grupo5"
-RABBITMQ_PASSWORD = "z1x2c3v4b5n6"
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq-cluster.rabbitmq-system.svc.cluster.local")
+RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "grupo5")
+RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "z1x2c3v4b5n6")
 
 
 BASE_TOPIC_PREFIX = "race-"   
