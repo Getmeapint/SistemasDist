@@ -14,7 +14,7 @@ frontend:
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
 rabbitmq:
-  enabled: true
+  enabled: false
   host: rabbitmq-cluster.rabbitmq-system.svc.cluster.local
   port: 5672
   managementPort: 15672
