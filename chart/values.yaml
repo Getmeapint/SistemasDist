@@ -15,12 +15,11 @@ frontend:
   gpxPath: /usr/share/nginx/html/gpx
 rabbitmq:
   enabled: true
-  host: rabbitmq
+  host: rabbitmq-cluster.rabbitmq-system.svc.cluster.local
   port: 5672
   managementPort: 15672
   user: grupo5
   password: z1x2c3v4b5n6
-
 
 
 

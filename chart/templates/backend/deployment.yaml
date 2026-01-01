@@ -27,7 +27,7 @@ spec:
           image: {{ .Values.backend.image | default "manufreit/sd-backend:latest" }}
           env:
             - name: RABBITMQ_HOST
-              value: {{ (ternary "rabbitmq.10.2.15.161.nip.io" (.Values.rabbitmq.host | default "rabbitmq") (not .Values.rabbitmq.enabled)) | quote }}
+              value: {{ .Values.rabbitmq.host | quote }}
             - name: RABBITMQ_PORT
               value: {{ .Values.rabbitmq.port | default 5672 | quote }}
             - name: RABBITMQ_USER
