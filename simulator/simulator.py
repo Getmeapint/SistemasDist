@@ -10,8 +10,8 @@ from threading import Thread
 
 RABBITMQ_HOST = "rabbitmq-cluster.rabbitmq-system.svc.cluster.local"
 RABBITMQ_PORT = int(5672)
-RABBITMQ_USER = "grupo5"
-RABBITMQ_PASSWORD = "z1x2c3v4b5n6"
+RABBITMQ_USER = "default_user_yuYqGX_W__dS3yp1kt1"
+RABBITMQ_PASSWORD = "k3TfCWeYjXEgEDM2LZ3BZ6GbQON2v_KX"
 
 
 BASE_TOPIC_PREFIX = "race-"   
