@@ -9,7 +9,7 @@ import socket
 import os
 import aiohttp
 from urllib.parse import quote
-from typing import Optional, List, Dict, Set
+from typing import Optional, Dict, Set
 
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
@@ -160,7 +160,6 @@ async def rabbit_startup():
 
 
 async def rabbit_shutdown():
-    global _rabbit_connection
     try:
         if _rabbit_connection:
             await _rabbit_connection.close()
