@@ -22,7 +22,7 @@ def _reload_backend():
     if "backend.backend" in sys.modules:
         del sys.modules["backend.backend"]
     import backend.backend as mod
-    return importlib.reload(mod)
+    return mod
 
 
 def test_root_endpoint():
