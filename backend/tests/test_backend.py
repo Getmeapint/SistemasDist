@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from prometheus_client import REGISTRY
-import backend.backend as backend
 
 
 def _clear_registry():
