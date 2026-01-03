@@ -20,7 +20,7 @@ jobs:
       - name: Install backend deps
         run: |
           pip install --upgrade pip
-          pip install fastapi==0.111.1 uvicorn[standard]==0.27.0 aio-pika gpxpy requests pytest pytest-asyncio flake8
+          pip install fastapi==0.111.1 uvicorn[standard]==0.27.0 aio-pika gpxpy requests pytest pytest-asyncio flake8 prometheus-fastapi-instrumentator
       - name: Lint backend
         run: |
           flake8 backend --max-line-length=120
