@@ -1,17 +1,21 @@
 import importlib
 import sys
 import pytest
+import prometheus_client
+from prometheus_client import CollectorRegistry
+from prometheus_client import REGISTRY as DEFAULT_REGISTRY
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from prometheus_client import REGISTRY
 
 
 def _clear_registry():
-    for collector in list(REGISTRY._collector_to_names.keys()):
-        try:
-            REGISTRY.unregister(collector)
-        except KeyError:
-            pass
+    # Replace the global registry with a fresh one to avoid duplicate metric errors on reload.
+    new_reg = CollectorRegistry()
+    prometheus_client.REGISTRY = new_reg
+    prometheus_client.metrics.REGISTRY = new_reg
+    DEFAULT_REGISTRY._collector_to_names.clear()
+    DEFAULT_REGISTRY._names_to_collectors.clear()
 
 
 def _reload_backend():
