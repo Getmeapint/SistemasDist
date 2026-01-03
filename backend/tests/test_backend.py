@@ -3,6 +3,7 @@ import sys
 import pytest
 import prometheus_client
 from prometheus_client import CollectorRegistry
+import prometheus_client.registry as prom_registry
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from prometheus_client import REGISTRY
@@ -11,10 +12,9 @@ from prometheus_client import REGISTRY
 def _clear_registry():
     # Replace the global registry with a fresh one to avoid duplicate metric errors on reload.
     new_reg = CollectorRegistry()
+    prom_registry.REGISTRY = new_reg
     prometheus_client.REGISTRY = new_reg
     prometheus_client.metrics.REGISTRY = new_reg
-    REGISTRY._collector_to_names.clear()
-    REGISTRY._names_to_collectors.clear()
 
 
 def _reload_backend():
