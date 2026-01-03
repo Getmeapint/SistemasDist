@@ -8,7 +8,28 @@ permissions:
   contents: write
 
 jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install backend deps
+        run: |
+          pip install --upgrade pip
+          pip install fastapi==0.111.1 uvicorn[standard]==0.27.0 aio-pika gpxpy requests pytest pytest-asyncio flake8
+      - name: Lint backend
+        run: |
+          flake8 backend --max-line-length=120
+      - name: Test backend
+        run: |
+          pytest backend/tests -q
+
   build:
+    needs: lint-and-test
     # Avoid recursion when the workflow commits back with [skip ci]
     if: "! contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
@@ -33,6 +54,35 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Detect changed components
+        id: changed
+        run: |
+          FRONTEND=false
+          BACKEND=false
+          SIMULATOR=false
+          BASE=$(git rev-parse HEAD^ 2>/dev/null || echo "")
+          if [ -z "$BASE" ]; then
+            BASE=HEAD
+          fi
+          git diff --name-only "$BASE"..HEAD | while read -r file; do
+            case "$file" in
+              frontend/*) FRONTEND=true ;;
+              backend/*) BACKEND=true ;;
+              simulator/*) SIMULATOR=true ;;
+            esac
+          done
+          if [ "$FRONTEND" = true ] || [ "$BACKEND" = true ] || [ "$SIMULATOR" = true ]; then
+            ANY=true
+          else
+            ANY=false
+          fi
+          {
+            echo "frontend=$FRONTEND"
+            echo "backend=$BACKEND"
+            echo "simulator=$SIMULATOR"
+            echo "any=$ANY"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Compute image tag
         id: vars
         run: |
@@ -41,6 +91,7 @@ jobs:
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
+        if: steps.changed.outputs.frontend == 'true'
         with:
           context: ./frontend
           push: true
@@ -50,6 +101,7 @@ jobs:
 
       - name: Build and push backend
         uses: docker/build-push-action@v5
+        if: steps.changed.outputs.backend == 'true'
         with:
           context: ./backend
           push: true
@@ -59,6 +111,7 @@ jobs:
 
       - name: Build and push simulator
         uses: docker/build-push-action@v5
+        if: steps.changed.outputs.simulator == 'true'
         with:
           context: ./simulator
           push: true
@@ -67,6 +120,7 @@ jobs:
             ${{ env.SIMULATOR_IMAGE }}:${{ steps.vars.outputs.tag }}
 
       - name: Update Helm values with new tags
+        if: steps.changed.outputs.any == 'true'
         run: |
           python - <<'PY'
           import yaml
@@ -76,14 +130,18 @@ jobs:
           path = Path("chart/values.yaml")
           data = yaml.safe_load(path.read_text())
 
-          data["frontend"]["image"] = f"{data['frontend']['image'].split(':')[0]}:{tag}"
-          data["backend"]["image"] = f"{data['backend']['image'].split(':')[0]}:{tag}"
-          data["simulator"]["image"] = f"{data['simulator']['image'].split(':')[0]}:{tag}"
+          if "${{ steps.changed.outputs.frontend }}" == "true":
+            data["frontend"]["image"] = f"{data['frontend']['image'].split(':')[0]}:{tag}"
+          if "${{ steps.changed.outputs.backend }}" == "true":
+            data["backend"]["image"] = f"{data['backend']['image'].split(':')[0]}:{tag}"
+          if "${{ steps.changed.outputs.simulator }}" == "true":
+            data["simulator"]["image"] = f"{data['simulator']['image'].split(':')[0]}:{tag}"
 
           path.write_text(yaml.safe_dump(data, sort_keys=False))
           PY
 
       - name: Commit updated values.yaml
+        if: steps.changed.outputs.any == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"

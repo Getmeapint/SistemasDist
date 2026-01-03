@@ -86,7 +86,6 @@ ws_disconnections = Counter(
 
 async def discover_and_bind_exchanges():
     """Discover exchanges via RabbitMQ management API and bind backend queue to them."""
-    mgmt_url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/exchanges/{RABBITMQ_VHOST}"
     mgmt_vhost = quote(RABBITMQ_VHOST, safe="")
     mgmt_url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/exchanges/{mgmt_vhost}"
     auth = aiohttp.BasicAuth(RABBITMQ_USER, RABBITMQ_PASSWORD)
@@ -114,11 +113,30 @@ async def discover_and_bind_exchanges():
         print(f"Error discovering exchanges: {e}")
 
 
+async def connect_rabbit_with_backoff(max_attempts: int = 5, base_delay: int = 1, cool_off: int = 300):
+    """Attempt to open a RabbitMQ connection with exponential backoff and cooldown on repeated failure."""
+    attempt = 1
+    while True:
+        try:
+            conn = await aio_pika.connect_robust(RABBITMQ_URL)
+            chan = await conn.channel()
+            return conn, chan
+        except Exception as e:
+            print(f"RabbitMQ connection attempt {attempt}/{max_attempts} failed: {e}")
+            if attempt >= max_attempts:
+                print(f"Backing off for {cool_off}s before retrying RabbitMQ connection")
+                await asyncio.sleep(cool_off)
+                attempt = 1
+            else:
+                delay = base_delay * (2 ** (attempt - 1))
+                await asyncio.sleep(delay)
+                attempt += 1
+
+
 async def rabbit_startup():
     global _rabbit_connection, _rabbit_channel, _backend_queue
     await wait_for_rabbitmq()
-    _rabbit_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-    _rabbit_channel = await _rabbit_connection.channel()
+    _rabbit_connection, _rabbit_channel = await connect_rabbit_with_backoff()
 
     # declare a durable backend queue that will be bound to exchanges
     _backend_queue = await _rabbit_channel.declare_queue("backend-queue", durable=True)
