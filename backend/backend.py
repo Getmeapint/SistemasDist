@@ -168,7 +168,7 @@ async def rabbit_startup():
 
     asyncio.create_task(periodic_rescan())
 
-    # start consuming from the backend queue yo2
+    # start consuming from the backend queue yo232
     await _backend_queue.consume(on_message)
 
 

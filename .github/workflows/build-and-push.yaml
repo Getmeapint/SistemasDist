@@ -57,20 +57,26 @@ jobs:
       - name: Detect changed components
         id: changed
         run: |
+          set -euo pipefail
+          shopt -s globstar
           FRONTEND=false
           BACKEND=false
           SIMULATOR=false
-          BASE=$(git rev-parse HEAD^ 2>/dev/null || echo "")
-          if [ -z "$BASE" ]; then
-            BASE=HEAD
+
+          BASE="${{ github.event.before }}"
+          HEAD="${{ github.sha }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null || echo HEAD)
           fi
-          git diff --name-only "$BASE"..HEAD | while read -r file; do
+
+          for file in $(git diff --name-only "$BASE" "$HEAD"); do
             case "$file" in
-              frontend/*) FRONTEND=true ;;
-              backend/*) BACKEND=true ;;
-              simulator/*) SIMULATOR=true ;;
+              frontend/*|frontend/**) FRONTEND=true ;;
+              backend/*|backend/**|chart/templates/backend/*|chart/templates/backend/**|chart/values.yaml) BACKEND=true ;;
+              simulator/*|simulator/**|chart/templates/simulador/*|chart/templates/simulador/**) SIMULATOR=true ;;
             esac
           done
+
           if [ "$FRONTEND" = true ] || [ "$BACKEND" = true ] || [ "$SIMULATOR" = true ]; then
             ANY=true
           else
