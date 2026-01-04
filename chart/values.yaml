@@ -4,12 +4,12 @@ backend:
   port: 30015
 simulator:
   enabled: true
-  image: manufreit/sd-simulator:latest
+  image: manufreit/sd-simulator:v45-d942317
   port: 30035
   gpxFolder: /app/gpx
 frontend:
   enabled: true
-  image: manufreit/sd-frontend:latest
+  image: manufreit/sd-frontend:v45-d942317
   port: 30025
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
