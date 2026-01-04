@@ -4,7 +4,7 @@ backend:
   port: 30015
 simulator:
   enabled: true
-  image: manufreit/sd-simulator:v45-d942317
+  image: manufreit/sd-simulator:v46-a130c1d
   port: 30035
   gpxFolder: /app/gpx
 frontend:
