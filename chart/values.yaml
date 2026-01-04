@@ -1,6 +1,6 @@
 backend:
   enabled: true
-  image: manufreit/sd-backend:v47-f865499
+  image: manufreit/sd-backend:v48-e488315
   port: 30015
   autoscaling:
     minReplicas: 1
