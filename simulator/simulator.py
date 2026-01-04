@@ -91,7 +91,7 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
 
     connection, channel = get_channel()
     
-    # Declare the exchange
+    # Declare the exchange2
     channel.exchange_declare(exchange=race_topic, exchange_type='fanout', durable=True)
 
     for i in range(len(points) - 1):
