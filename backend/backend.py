@@ -166,7 +166,7 @@ async def rabbit_shutdown():
     except Exception:
         pass
 
-
+#hello
 async def on_message(message: aio_pika.IncomingMessage):
     async with message.process():
         try:
