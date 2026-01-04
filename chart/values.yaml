@@ -1,6 +1,6 @@
 backend:
   enabled: true
-  image: manufreit/sd-backend:v44-6c3d696
+  image: manufreit/sd-backend:v47-f865499
   port: 30015
 simulator:
   enabled: true
