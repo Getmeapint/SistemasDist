@@ -2,6 +2,11 @@ backend:
   enabled: true
   image: manufreit/sd-backend:v44-6c3d696
   port: 30015
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 5
+    cpuUtilization: 70
+    memoryUtilization: 70
 simulator:
   enabled: true
   image: manufreit/sd-simulator:v46-a130c1d
