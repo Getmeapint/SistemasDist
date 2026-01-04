@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
+from contextlib import asynccontextmanager
 import asyncio
 import json
 import aio_pika
@@ -20,24 +21,6 @@ RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
 RABBITMQ_VHOST_PATH = RABBITMQ_VHOST if RABBITMQ_VHOST.startswith("/") else f"/{RABBITMQ_VHOST}"
 RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}{RABBITMQ_VHOST_PATH}"
 DEFAULT_TOPIC = "runner-events"
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Expose /metrics for Prometheus
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
-
-@app.get("/")
-async def root():
-    return {"status": "Backend is running", "websocket": "/ws"}
 
 
 async def wait_for_rabbitmq(host=None, port=None, timeout=60):
@@ -82,6 +65,36 @@ ws_disconnections = Counter(
     "WebSocket disconnections",
     ["race"],
 )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(rabbit_startup())
+    try:
+        yield
+    finally:
+        await rabbit_shutdown()
+        if not task.done():
+            task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Expose /metrics for Prometheus
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+@app.get("/")
+async def root():
+    return {"status": "Backend is running", "websocket": "/ws"}
 
 
 async def discover_and_bind_exchanges():
@@ -155,7 +168,7 @@ async def rabbit_startup():
 
     asyncio.create_task(periodic_rescan())
 
-    # start consuming from the backend queue
+    # start consuming from the backend queue yo
     await _backend_queue.consume(on_message)
 
 
@@ -166,7 +179,7 @@ async def rabbit_shutdown():
     except Exception:
         pass
 
-#hello
+
 async def on_message(message: aio_pika.IncomingMessage):
     async with message.process():
         try:
@@ -213,16 +226,6 @@ async def on_message(message: aio_pika.IncomingMessage):
                     SUBSCRIBERS[key].discard(ws)
                     if not SUBSCRIBERS[key]:
                         del SUBSCRIBERS[key]
-
-
-@app.on_event("startup")
-async def on_startup():
-    asyncio.create_task(rabbit_startup())
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await rabbit_shutdown()
 
 
 @app.websocket("/ws")
