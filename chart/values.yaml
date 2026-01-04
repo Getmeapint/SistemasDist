@@ -1,6 +1,6 @@
 backend:
   enabled: true
-  image: manufreit/sd-backend:latest
+  image: manufreit/sd-backend:v44-6c3d696
   port: 30015
 simulator:
   enabled: true
@@ -21,9 +21,3 @@ rabbitmq:
   user: grupo5
   password: z1x2c3v4b5n6
   vhost: grupo5
-
-
-
-
-
-
