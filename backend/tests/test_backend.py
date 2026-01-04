@@ -1,12 +1,11 @@
-import importlib
 import sys
 import pytest
 import prometheus_client
+import prometheus_client.metrics as prom_metrics
 from prometheus_client import CollectorRegistry
 import prometheus_client.registry as prom_registry
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
-from prometheus_client import REGISTRY
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def _clear_registry():
@@ -15,6 +14,19 @@ def _clear_registry():
     prom_registry.REGISTRY = new_reg
     prometheus_client.REGISTRY = new_reg
     prometheus_client.metrics.REGISTRY = new_reg
+
+    class DummyCounter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def inc(self, *args, **kwargs):
+            return None
+
+    prometheus_client.Counter = DummyCounter
+    prom_metrics.Counter = DummyCounter
 
 
 def _reload_backend():
@@ -70,40 +82,56 @@ async def test_connect_with_backoff_eventual_cooloff(mock_connect):
     assert chan is not None
 
 
-@patch("backend.backend._backend_queue")
-@patch("backend.backend._rabbit_channel")
-@patch("backend.backend.aiohttp.ClientSession")
 @pytest.mark.asyncio
-async def test_discover_and_bind_exchanges_binds_non_amq(mock_session, mock_channel, mock_queue):
-    # Mock management API response
-    fake_resp = AsyncMock()
-    fake_resp.status = 200
-    fake_resp.json.return_value = [
-        {"name": "amq.direct"},
-        {"name": ""},
-        {"name": "custom-ex"},
-    ]
-    mock_get_ctx = AsyncMock()
-    mock_get_ctx.__aenter__.return_value = fake_resp
-    mock_session.return_value.__aenter__.return_value.get.return_value = mock_get_ctx
-
-    # Mock declare and bind
-    mock_exchange = AsyncMock()
-    mock_channel.declare_exchange.return_value = mock_exchange
-
+async def test_discover_and_bind_exchanges_binds_non_amq():
     mod = _reload_backend()
+
+    class DummyResp:
+        status = 200
+
+        async def json(self):
+            return [
+                {"name": "amq.direct"},
+                {"name": ""},
+                {"name": "custom-ex"},
+            ]
+
+    class DummyGetCtx:
+        async def __aenter__(self):
+            return DummyResp()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class DummySession:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url):
+            return DummyGetCtx()
+
+    mock_exchange = AsyncMock()
+    mod.aiohttp.ClientSession = DummySession
+    mod._rabbit_channel = AsyncMock()
+    mod._rabbit_channel.declare_exchange.return_value = mock_exchange
+    mod._backend_queue = AsyncMock()
+
     await mod.discover_and_bind_exchanges()
 
-    mock_channel.declare_exchange.assert_called_once()
-    mock_queue.bind.assert_called_once_with(mock_exchange)
+    mod._rabbit_channel.declare_exchange.assert_called_once()
+    mod._backend_queue.bind.assert_called_once_with(mock_exchange)
 
 
-@patch("backend.backend.messages_consumed")
-@patch("backend.backend.json.loads")
 @pytest.mark.asyncio
-async def test_on_message_parses_and_counts(mock_json_loads, mock_counter):
+async def test_on_message_parses_and_counts():
     mod = _reload_backend()
-    mock_json_loads.return_value = {"race": "r1"}
+    mod.messages_consumed = MagicMock()
 
     class FakeMessage:
         def __init__(self):
@@ -120,4 +148,4 @@ async def test_on_message_parses_and_counts(mock_json_loads, mock_counter):
 
     msg = FakeMessage()
     await mod.on_message(msg)
-    mock_counter.labels.assert_called_with("r1")
+    mod.messages_consumed.labels.assert_called_with("r1")
