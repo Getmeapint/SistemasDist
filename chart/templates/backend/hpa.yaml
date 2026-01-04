@@ -19,12 +19,12 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.backend.autoscaling.cpuUtilization | default 70 }}
-    {{- if .Values.backend.autoscaling.memoryUtilization }}
+{{- if .Values.backend.autoscaling.memoryUtilization }}
     - type: Resource
       resource:
         name: memory
         target:
           type: Utilization
           averageUtilization: {{ .Values.backend.autoscaling.memoryUtilization }}
-    {{- end }}
+{{- end }}
 {{- end }}
