@@ -2,38 +2,25 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
+from contextlib import asynccontextmanager
 import asyncio
 import json
 import aio_pika
 import socket
 import os
 import aiohttp
-from typing import Optional, List, Dict, Set
+from urllib.parse import quote
+from typing import Optional, Dict, Set
 
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
 RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+RABBITMQ_MGMT_PORT = int(os.environ.get("RABBITMQ_MGMT_PORT", 15672))
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
 RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "guest")
-RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+RABBITMQ_VHOST_PATH = RABBITMQ_VHOST if RABBITMQ_VHOST.startswith("/") else f"/{RABBITMQ_VHOST}"
+RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}{RABBITMQ_VHOST_PATH}"
 DEFAULT_TOPIC = "runner-events"
-
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Expose /metrics for Prometheus
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
-
-@app.get("/")
-async def root():
-    return {"status": "Backend is running", "websocket": "/ws"}
 
 
 async def wait_for_rabbitmq(host=None, port=None, timeout=60):
@@ -80,9 +67,40 @@ ws_disconnections = Counter(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(rabbit_startup())
+    try:
+        yield
+    finally:
+        await rabbit_shutdown()
+        if not task.done():
+            task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Expose /metrics for Prometheus
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+@app.get("/")
+async def root():
+    return {"status": "Backend is running", "websocket": "/ws"}
+
+
 async def discover_and_bind_exchanges():
     """Discover exchanges via RabbitMQ management API and bind backend queue to them."""
-    mgmt_url = f"http://{RABBITMQ_HOST}:15672/api/exchanges/"
+    mgmt_vhost = quote(RABBITMQ_VHOST, safe="")
+    mgmt_url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/exchanges/{mgmt_vhost}"
     auth = aiohttp.BasicAuth(RABBITMQ_USER, RABBITMQ_PASSWORD)
 
     try:
@@ -108,11 +126,30 @@ async def discover_and_bind_exchanges():
         print(f"Error discovering exchanges: {e}")
 
 
+async def connect_rabbit_with_backoff(max_attempts: int = 5, base_delay: int = 1, cool_off: int = 300):
+    """Attempt to open a RabbitMQ connection with exponential backoff and cooldown on repeated failure."""
+    attempt = 1
+    while True:
+        try:
+            conn = await aio_pika.connect_robust(RABBITMQ_URL)
+            chan = await conn.channel()
+            return conn, chan
+        except Exception as e:
+            print(f"RabbitMQ connection attempt {attempt}/{max_attempts} failed: {e}")
+            if attempt >= max_attempts:
+                print(f"Backing off for {cool_off}s before retrying RabbitMQ connection")
+                await asyncio.sleep(cool_off)
+                attempt = 1
+            else:
+                delay = base_delay * (2 ** (attempt - 1))
+                await asyncio.sleep(delay)
+                attempt += 1
+
+
 async def rabbit_startup():
     global _rabbit_connection, _rabbit_channel, _backend_queue
     await wait_for_rabbitmq()
-    _rabbit_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-    _rabbit_channel = await _rabbit_connection.channel()
+    _rabbit_connection, _rabbit_channel = await connect_rabbit_with_backoff()
 
     # declare a durable backend queue that will be bound to exchanges
     _backend_queue = await _rabbit_channel.declare_queue("backend-queue", durable=True)
@@ -131,12 +168,11 @@ async def rabbit_startup():
 
     asyncio.create_task(periodic_rescan())
 
-    # start consuming from the backend queue
+    # start consuming from the backend queue yo232
     await _backend_queue.consume(on_message)
 
 
 async def rabbit_shutdown():
-    global _rabbit_connection
     try:
         if _rabbit_connection:
             await _rabbit_connection.close()
@@ -190,16 +226,6 @@ async def on_message(message: aio_pika.IncomingMessage):
                     SUBSCRIBERS[key].discard(ws)
                     if not SUBSCRIBERS[key]:
                         del SUBSCRIBERS[key]
-
-
-@app.on_event("startup")
-async def on_startup():
-    asyncio.create_task(rabbit_startup())
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await rabbit_shutdown()
 
 
 @app.websocket("/ws")

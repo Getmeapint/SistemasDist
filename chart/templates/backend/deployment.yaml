@@ -27,13 +27,17 @@ spec:
           image: {{ .Values.backend.image | default "manufreit/sd-backend:latest" }}
           env:
             - name: RABBITMQ_HOST
-              value: {{ .Values.rabbitmq.host | default "rabbitmq" | quote }}
+              value: {{ .Values.rabbitmq.host | quote }}
             - name: RABBITMQ_PORT
               value: {{ .Values.rabbitmq.port | default 5672 | quote }}
+            - name: RABBITMQ_MGMT_PORT
+              value: {{ .Values.rabbitmq.managementPort | default 15672 | quote }}
             - name: RABBITMQ_USER
               value: {{ .Values.rabbitmq.user | quote }}
             - name: RABBITMQ_PASSWORD
               value: {{ .Values.rabbitmq.password | quote }}
+            - name: RABBITMQ_VHOST
+              value: {{ .Values.rabbitmq.vhost | default "/" | quote }}
           resources:
             requests:
               cpu: "100m"

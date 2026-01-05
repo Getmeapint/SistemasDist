@@ -1,0 +1,12 @@
+config:
+  target: "ws://backend-service:30015"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+scenarios:
+  - name: "Backend WS Race Test"
+    engine: ws
+    flow:
+      - connect:
+          url: "/ws?race=race-trail_route_1"
+      - think: 60

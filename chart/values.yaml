@@ -1,22 +1,28 @@
 backend:
   enabled: true
-  image: manufreit/sd-backend:v22-c4c677a
+  image: manufreit/sd-backend:v49-4c19059
   port: 30015
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 5
+    cpuUtilization: 70
+    memoryUtilization: 70
 simulator:
   enabled: true
-  image: manufreit/sd-simulator:v22-c4c677a
+  image: manufreit/sd-simulator:v46-a130c1d
   port: 30035
   gpxFolder: /app/gpx
 frontend:
   enabled: true
-  image: manufreit/sd-frontend:v22-c4c677a
+  image: manufreit/sd-frontend:v45-d942317
   port: 30025
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
 rabbitmq:
-  enabled: true
-  host: rabbitmq
+  enabled: false
+  host: rabbitmq-cluster.rabbitmq-system.svc.cluster.local
   port: 5672
   managementPort: 15672
   user: grupo5
   password: z1x2c3v4b5n6
+  vhost: grupo5

@@ -301,7 +301,7 @@
             const wsUrl = `ws://${window.location.hostname}:30015/ws?race=${raceTopic}`;
             const ws = new WebSocket(wsUrl);
             sockets[raceTopic] = ws;
-            //nerd
+            //nerd2
 
             ws.onopen = () => console.log(`Connected to ${raceTopic}`);
             ws.onclose = () => {

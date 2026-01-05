@@ -8,10 +8,11 @@ from pika.exceptions import AMQPConnectionError
 import json
 from threading import Thread
 
-RABBITMQ_HOST = "rabbitmq-cluster.rabbitmq-system.svc.cluster.local"
-RABBITMQ_PORT = int(5672)
-RABBITMQ_USER = "default_user_yuYqGX_W__dS3yp1kt1"
-RABBITMQ_PASSWORD = "k3TfCWeYjXEgEDM2LZ3BZ6GbQON2v_KX"
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq-cluster.rabbitmq-system.svc.cluster.local")
+RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "grupo5")
+RABBITMQ_PASSWORD = os.environ.get("RABBITMQ_PASSWORD", "z1x2c3v4b5n6")
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/grupo5")
 
 
 BASE_TOPIC_PREFIX = "race-"   
@@ -38,6 +39,7 @@ def wait_for_rabbitmq(retries=10, delay=2):
                 pika.ConnectionParameters(
                     host=RABBITMQ_HOST,
                     port=RABBITMQ_PORT,
+                    virtual_host=RABBITMQ_VHOST,
                     credentials=credentials,
                     connection_attempts=1,
                     retry_delay=1
@@ -60,6 +62,7 @@ def get_channel():
         pika.ConnectionParameters(
             host=RABBITMQ_HOST,
             port=RABBITMQ_PORT,
+            virtual_host=RABBITMQ_VHOST,
             credentials=credentials
         )
     )
@@ -88,7 +91,7 @@ def simulate_athlete(athlete, race_topic, points, speed_kmh):
 
     connection, channel = get_channel()
     
-    # Declare the exchange
+    # Declare the exchange2
     channel.exchange_declare(exchange=race_topic, exchange_type='fanout', durable=True)
 
     for i in range(len(points) - 1):
