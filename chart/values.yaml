@@ -14,7 +14,7 @@ simulator:
   gpxFolder: /app/gpx
 frontend:
   enabled: true
-  image: manufreit/sd-frontend:v54-b05f883
+  image: manufreit/sd-frontend:v55-7a26dc6
   port: 30025
   assetsPath: /usr/share/nginx/html/assets
   gpxPath: /usr/share/nginx/html/gpx
