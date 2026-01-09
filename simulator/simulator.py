@@ -26,7 +26,15 @@ ATHLETES = [
     {"name": "Alice Johnson", "gender": "female"},
     {"name": "Bob Brown", "gender": "male"},
     {"name": "Charlie Davis", "gender": "male"},
-    {"name": "David Evans", "gender": "male"}
+    {"name": "David Evans", "gender": "male"},
+    {"name": "Eva Green", "gender": "female"},
+    {"name": "Frank Harris", "gender": "male"},
+    {"name": "Grace Lee", "gender": "female"},
+    {"name": "Hannah Martin", "gender": "female"},
+    {"name": "Ian Nelson", "gender": "male"},
+    {"name": "Jackie O'Connor", "gender": "female"},
+    {"name": "Kevin Parker", "gender": "male"},
+    {"name": "Laura Quinn", "gender": "female"}
 ]
 SPEED_VARIATION = (6, 12) 
 
