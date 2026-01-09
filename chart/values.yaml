@@ -9,7 +9,7 @@ backend:
     memoryUtilization: 70
 simulator:
   enabled: true
-  image: manufreit/sd-simulator:v57-10929c5
+  image: manufreit/sd-simulator:v58-2ac1a18
   port: 30035
   gpxFolder: /app/gpx
 frontend:
